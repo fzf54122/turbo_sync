@@ -1,6 +1,11 @@
+mod client;
+mod output;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use turbosync_core::config;
+use turbosync_core::{config, models::*};
+
+use crate::client::AgentClient;
 
 #[derive(Debug, Parser)]
 #[command(name = "tsync", version, about = "TurboSync command line interface")]
@@ -104,38 +109,89 @@ async fn init_with_paths(paths: &config::ConfigPaths) -> Result<config::AppConfi
     Ok(config)
 }
 
+async fn run_node_command(command: NodeCommand) -> Result<()> {
+    let client = AgentClient::from_config()?;
+
+    match command {
+        NodeCommand::Add { name, endpoint } => {
+            let node = client
+                .add_node(&CreateNodeRequest {
+                    name,
+                    endpoint,
+                    public_key: None,
+                })
+                .await?;
+            output::print_node(&node);
+        }
+        NodeCommand::List => {
+            let nodes = client.list_nodes().await?;
+            output::print_nodes(&nodes);
+        }
+        NodeCommand::Remove { node_id } => {
+            if client.remove_node(&node_id).await? {
+                println!("Removed node: {node_id}");
+            } else {
+                println!("Node not found: {node_id}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_task_command(command: TaskCommand) -> Result<()> {
+    let client = AgentClient::from_config()?;
+
+    match command {
+        TaskCommand::Add {
+            name,
+            source,
+            target_node,
+            target_path,
+        } => {
+            let task = client
+                .add_task(&CreateTaskRequest::one_way(
+                    name,
+                    source,
+                    target_node,
+                    target_path,
+                ))
+                .await?;
+            output::print_task(&task);
+        }
+        TaskCommand::List => {
+            let tasks = client.list_tasks().await?;
+            output::print_tasks(&tasks);
+        }
+        TaskCommand::Remove { task_id } => {
+            if client.remove_task(&task_id).await? {
+                println!("Removed task: {task_id}");
+            } else {
+                println!("Task not found: {task_id}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn run_with_cli(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Init => init().await?,
         Command::Agent { command } => match command {
             AgentCommand::Run => turbosync_agent::run_foreground().await?,
         },
-        Command::Status => println!("TurboSync status is not implemented yet."),
-        Command::Node { command } => match command {
-            NodeCommand::Add { name, endpoint } => {
-                println!("TurboSync node add is not implemented yet: {name} {endpoint}")
-            }
-            NodeCommand::List => println!("TurboSync node list is not implemented yet."),
-            NodeCommand::Remove { node_id } => {
-                println!("TurboSync node remove is not implemented yet: {node_id}")
-            }
-        },
-        Command::Task { command } => match command {
-            TaskCommand::Add {
-                name,
-                source,
-                target_node,
-                target_path,
-            } => println!(
-                "TurboSync task add is not implemented yet: {name} {source} {target_node} {target_path}"
-            ),
-            TaskCommand::List => println!("TurboSync task list is not implemented yet."),
-            TaskCommand::Remove { task_id } => {
-                println!("TurboSync task remove is not implemented yet: {task_id}")
-            }
-        },
+        Command::Status => {
+            let client = AgentClient::from_config()?;
+            let status = client.status().await?;
+            output::print_status(&status);
+        }
+        Command::Node { command } => run_node_command(command).await?,
+        Command::Task { command } => run_task_command(command).await?,
         Command::Sync { task_id } => println!("TurboSync sync is not implemented yet: {task_id}"),
-        Command::Rescan { task_id } => println!("TurboSync rescan is not implemented yet: {task_id}"),
+        Command::Rescan { task_id } => {
+            println!("TurboSync rescan is not implemented yet: {task_id}")
+        }
         Command::Logs { limit } => println!("TurboSync logs is not implemented yet: {limit}"),
     }
 

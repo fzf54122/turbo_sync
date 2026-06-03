@@ -1,0 +1,107 @@
+use anyhow::{Context, Result};
+use reqwest::StatusCode;
+use serde::{de::DeserializeOwned, Serialize};
+use turbosync_core::{config, models::*};
+
+pub struct AgentClient {
+    base_url: String,
+    client: reqwest::Client,
+}
+
+impl AgentClient {
+    pub fn from_config() -> Result<Self> {
+        let paths = config::resolve_paths()?;
+        let config = config::load_config_at(&paths)
+            .with_context(|| "TurboSync is not initialized; run `tsync init` first")?;
+
+        Ok(Self {
+            base_url: format!("http://{}", config.agent_addr),
+            client: reqwest::Client::new(),
+        })
+    }
+
+    pub async fn status(&self) -> Result<StatusResponse> {
+        self.get("/v1/status").await
+    }
+
+    pub async fn add_node(&self, request: &CreateNodeRequest) -> Result<Node> {
+        self.post("/v1/nodes", request).await
+    }
+
+    pub async fn list_nodes(&self) -> Result<Vec<Node>> {
+        self.get("/v1/nodes").await
+    }
+
+    pub async fn remove_node(&self, node_id: &str) -> Result<bool> {
+        self.delete(&format!("/v1/nodes/{node_id}")).await
+    }
+
+    pub async fn add_task(&self, request: &CreateTaskRequest) -> Result<SyncTask> {
+        self.post("/v1/tasks", request).await
+    }
+
+    pub async fn list_tasks(&self) -> Result<Vec<SyncTask>> {
+        self.get("/v1/tasks").await
+    }
+
+    pub async fn remove_task(&self, task_id: &str) -> Result<bool> {
+        self.delete(&format!("/v1/tasks/{task_id}")).await
+    }
+
+    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let response = self
+            .client
+            .get(self.url(path))
+            .send()
+            .await
+            .context("agent is not running; start it with `tsync agent run`")?
+            .error_for_status()
+            .context("agent request failed")?;
+
+        response
+            .json()
+            .await
+            .context("failed to decode agent response")
+    }
+
+    async fn post<T: Serialize, U: DeserializeOwned>(&self, path: &str, body: &T) -> Result<U> {
+        let response = self
+            .client
+            .post(self.url(path))
+            .json(body)
+            .send()
+            .await
+            .context("agent is not running; start it with `tsync agent run`")?
+            .error_for_status()
+            .context("agent request failed")?;
+
+        response
+            .json()
+            .await
+            .context("failed to decode agent response")
+    }
+
+    async fn delete(&self, path: &str) -> Result<bool> {
+        let response = self
+            .client
+            .delete(self.url(path))
+            .send()
+            .await
+            .context("agent is not running; start it with `tsync agent run`")?;
+
+        match response.status() {
+            StatusCode::NO_CONTENT => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            _ => {
+                response
+                    .error_for_status()
+                    .context("agent request failed")?;
+                Ok(true)
+            }
+        }
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("{}{}", self.base_url, path)
+    }
+}

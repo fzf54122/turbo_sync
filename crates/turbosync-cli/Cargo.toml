@@ -12,6 +12,8 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+reqwest.workspace = true
+serde.workspace = true
 tokio.workspace = true
 turbosync-agent = { path = "../turbosync-agent" }
 turbosync-core = { path = "../turbosync-core" }
