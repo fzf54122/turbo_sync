@@ -14,8 +14,11 @@ anyhow.workspace = true
 clap.workspace = true
 tokio.workspace = true
 turbosync-agent = { path = "../turbosync-agent" }
+turbosync-core = { path = "../turbosync-core" }
+turbosync-storage = { path = "../turbosync-storage" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
 clap.workspace = true
+tempfile.workspace = true

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use turbosync_core::config;
 
 #[derive(Debug, Parser)]
 #[command(name = "tsync", version, about = "TurboSync command line interface")]
@@ -86,9 +87,26 @@ pub async fn run() -> Result<()> {
     run_with_cli(cli).await
 }
 
+async fn init() -> Result<()> {
+    let paths = config::resolve_paths()?;
+    let config = init_with_paths(&paths).await?;
+
+    println!("TurboSync initialized.");
+    println!("Config: {}", paths.config_file.display());
+    println!("Database: {}", config.db_path.display());
+
+    Ok(())
+}
+
+async fn init_with_paths(paths: &config::ConfigPaths) -> Result<config::AppConfig> {
+    let config = config::init_config_at(paths)?;
+    turbosync_storage::initialize_database(&config.db_path).await?;
+    Ok(config)
+}
+
 async fn run_with_cli(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Init => println!("TurboSync init is not implemented yet."),
+        Command::Init => init().await?,
         Command::Agent { command } => match command {
             AgentCommand::Run => turbosync_agent::run_foreground().await?,
         },
@@ -138,5 +156,21 @@ mod tests {
         ] {
             assert!(help.contains(command), "missing command: {command}");
         }
+    }
+
+    #[tokio::test]
+    async fn init_creates_config_and_database() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let paths = config::ConfigPaths {
+            config_file: temp_dir.path().join("config/config.toml"),
+            data_dir: temp_dir.path().join("data"),
+            db_file: temp_dir.path().join("data/turbosync.db"),
+        };
+
+        let app_config = init_with_paths(&paths).await.unwrap();
+
+        assert_eq!(app_config.db_path, paths.db_file);
+        assert!(paths.config_file.exists());
+        assert!(paths.db_file.exists());
     }
 }
