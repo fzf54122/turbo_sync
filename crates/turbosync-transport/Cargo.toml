@@ -1,0 +1,11 @@
+[package]
+name = "turbosync-transport"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+quinn.workspace = true
+serde.workspace = true
+turbosync-core = { path = "../turbosync-core" }

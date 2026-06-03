@@ -1,0 +1,11 @@
+[package]
+name = "turbosync-sync"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+blake3.workspace = true
+turbosync-core = { path = "../turbosync-core" }
+walkdir.workspace = true
