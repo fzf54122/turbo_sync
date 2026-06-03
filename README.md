@@ -51,12 +51,13 @@ TurboSync 的目标是提供一个比 `rsync` 更简单、比 Syncthing 更容�
 - ✅ SQLx migrations
 - ✅ Agent 本地控制 API：health / status / nodes / tasks
 - ✅ CLI 通过本地 Agent API 管理节点和同步任务
+- ✅ 文件扫描和 SQLite 索引
+- ✅ 本地手动同步：rescan / sync
+- ✅ 同步 run / operation 日志
 
 下一步 MVP 工作：
 
-- ⏳ 文件扫描和索引
-- ⏳ 手动同步
-- ⏳ 文件监听
+- ⏳ 文件监听和防抖触发
 - ⏳ Agent-to-Agent 文件传输
 
 ## 🏗️ 架构设计
@@ -127,15 +128,15 @@ tsync task list
 tsync task remove <task-id>
 ```
 
-### 6. 后续同步命令
-
-这些命令属于后续 MVP 里程碑：
+### 6. 手动扫描、同步和日志
 
 ```bash
-tsync sync <task-id>
 tsync rescan <task-id>
+tsync sync <task-id>
 tsync logs --limit 50
 ```
+
+当前阶段的 `sync` 先将任务的 `target-path` 作为本地路径使用；Agent-to-Agent 远端传输会在后续 MVP 中接入。
 
 ## 🛠️ 技术栈
 

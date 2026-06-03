@@ -6,9 +6,27 @@ use sqlx::{
     Row, SqlitePool,
 };
 use turbosync_core::models::{
-    CreateNodeRequest, CreateTaskRequest, Node, StatusResponse, SyncTask,
+    CreateNodeRequest, CreateTaskRequest, FileIndexEntry, Node, StatusResponse, SyncOperation,
+    SyncRun, SyncTask,
 };
 use uuid::Uuid;
+
+pub struct FinishSyncRun {
+    pub status: String,
+    pub files_scanned: i64,
+    pub files_changed: i64,
+    pub files_failed: i64,
+    pub bytes_sent: i64,
+    pub error_message: Option<String>,
+}
+
+pub struct CreateSyncOperation {
+    pub relative_path: String,
+    pub operation_kind: String,
+    pub status: String,
+    pub size_bytes: Option<i64>,
+    pub error_message: Option<String>,
+}
 
 pub async fn initialize_database(db_path: &Path) -> Result<SqlitePool> {
     if let Some(parent) = db_path.parent() {
@@ -144,6 +162,17 @@ pub async fn add_sync_task(pool: &SqlitePool, request: &CreateTaskRequest) -> Re
     Ok(task)
 }
 
+pub async fn get_sync_task(pool: &SqlitePool, task_id: &str) -> Result<Option<SyncTask>> {
+    let row = sqlx::query(
+        "SELECT id, name, source_path, target_node_id, target_path, direction, delete_mode, enabled, created_at, updated_at FROM sync_tasks WHERE id = $1",
+    )
+    .bind(task_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(row_to_sync_task))
+}
+
 pub async fn list_sync_tasks(pool: &SqlitePool) -> Result<Vec<SyncTask>> {
     let rows = sqlx::query(
         "SELECT id, name, source_path, target_node_id, target_path, direction, delete_mode, enabled, created_at, updated_at FROM sync_tasks ORDER BY created_at ASC",
@@ -161,6 +190,222 @@ pub async fn remove_sync_task(pool: &SqlitePool, task_id: &str) -> Result<bool> 
         .await?;
 
     Ok(result.rows_affected() > 0)
+}
+
+pub async fn list_file_index_for_task(
+    pool: &SqlitePool,
+    task_id: &str,
+) -> Result<Vec<FileIndexEntry>> {
+    let rows = sqlx::query(
+        "SELECT task_id, relative_path, file_kind, size_bytes, modified_at, content_hash, deleted, last_seen_at, last_synced_at, updated_at FROM file_index WHERE task_id = $1 ORDER BY relative_path ASC",
+    )
+    .bind(task_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(row_to_file_index_entry).collect())
+}
+
+pub async fn upsert_file_index_entries(
+    pool: &SqlitePool,
+    entries: &[FileIndexEntry],
+) -> Result<()> {
+    for entry in entries {
+        sqlx::query(
+            "INSERT INTO file_index (task_id, relative_path, file_kind, size_bytes, modified_at, content_hash, deleted, last_seen_at, last_synced_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT(task_id, relative_path) DO UPDATE SET file_kind = excluded.file_kind, size_bytes = excluded.size_bytes, modified_at = excluded.modified_at, content_hash = excluded.content_hash, deleted = excluded.deleted, last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at",
+        )
+        .bind(&entry.task_id)
+        .bind(&entry.relative_path)
+        .bind(&entry.file_kind)
+        .bind(entry.size_bytes)
+        .bind(&entry.modified_at)
+        .bind(&entry.content_hash)
+        .bind(bool_to_int(entry.deleted))
+        .bind(&entry.last_seen_at)
+        .bind(&entry.last_synced_at)
+        .bind(&entry.updated_at)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn mark_file_index_deleted(
+    pool: &SqlitePool,
+    task_id: &str,
+    relative_paths: &[String],
+) -> Result<()> {
+    let now = now_text();
+
+    for relative_path in relative_paths {
+        sqlx::query(
+            "UPDATE file_index SET deleted = 1, updated_at = $1 WHERE task_id = $2 AND relative_path = $3",
+        )
+        .bind(&now)
+        .bind(task_id)
+        .bind(relative_path)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn set_file_index_synced(
+    pool: &SqlitePool,
+    task_id: &str,
+    relative_paths: &[String],
+    synced_at: &str,
+) -> Result<()> {
+    for relative_path in relative_paths {
+        sqlx::query(
+            "UPDATE file_index SET last_synced_at = $1, updated_at = $1 WHERE task_id = $2 AND relative_path = $3",
+        )
+        .bind(synced_at)
+        .bind(task_id)
+        .bind(relative_path)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn create_sync_run(
+    pool: &SqlitePool,
+    task_id: Option<&str>,
+    trigger_kind: &str,
+) -> Result<SyncRun> {
+    let now = now_text();
+    let run = SyncRun {
+        id: Uuid::new_v4().to_string(),
+        task_id: task_id.map(str::to_owned),
+        trigger_kind: trigger_kind.to_owned(),
+        status: "running".to_owned(),
+        started_at: now,
+        finished_at: None,
+        files_scanned: 0,
+        files_changed: 0,
+        files_failed: 0,
+        bytes_sent: 0,
+        error_message: None,
+    };
+
+    sqlx::query(
+        "INSERT INTO sync_runs (id, task_id, trigger_kind, status, started_at, finished_at, files_scanned, files_changed, files_failed, bytes_sent, error_message) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+    )
+    .bind(&run.id)
+    .bind(&run.task_id)
+    .bind(&run.trigger_kind)
+    .bind(&run.status)
+    .bind(&run.started_at)
+    .bind(&run.finished_at)
+    .bind(run.files_scanned)
+    .bind(run.files_changed)
+    .bind(run.files_failed)
+    .bind(run.bytes_sent)
+    .bind(&run.error_message)
+    .execute(pool)
+    .await?;
+
+    Ok(run)
+}
+
+pub async fn finish_sync_run(
+    pool: &SqlitePool,
+    run_id: &str,
+    update: &FinishSyncRun,
+) -> Result<SyncRun> {
+    let finished_at = now_text();
+
+    sqlx::query(
+        "UPDATE sync_runs SET status = $1, finished_at = $2, files_scanned = $3, files_changed = $4, files_failed = $5, bytes_sent = $6, error_message = $7 WHERE id = $8",
+    )
+    .bind(&update.status)
+    .bind(&finished_at)
+    .bind(update.files_scanned)
+    .bind(update.files_changed)
+    .bind(update.files_failed)
+    .bind(update.bytes_sent)
+    .bind(&update.error_message)
+    .bind(run_id)
+    .execute(pool)
+    .await?;
+
+    get_sync_run(pool, run_id).await
+}
+
+pub async fn list_recent_sync_runs(pool: &SqlitePool, limit: i64) -> Result<Vec<SyncRun>> {
+    let rows = sqlx::query(
+        "SELECT id, task_id, trigger_kind, status, started_at, finished_at, files_scanned, files_changed, files_failed, bytes_sent, error_message FROM sync_runs ORDER BY started_at DESC LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(row_to_sync_run).collect())
+}
+
+pub async fn add_sync_operation(
+    pool: &SqlitePool,
+    sync_run_id: &str,
+    request: &CreateSyncOperation,
+) -> Result<SyncOperation> {
+    let now = now_text();
+    let operation = SyncOperation {
+        id: Uuid::new_v4().to_string(),
+        sync_run_id: sync_run_id.to_owned(),
+        relative_path: request.relative_path.clone(),
+        operation_kind: request.operation_kind.clone(),
+        status: request.status.clone(),
+        size_bytes: request.size_bytes,
+        error_message: request.error_message.clone(),
+        created_at: now.clone(),
+        finished_at: Some(now),
+    };
+
+    sqlx::query(
+        "INSERT INTO sync_operations (id, sync_run_id, relative_path, operation_kind, status, size_bytes, error_message, created_at, finished_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(&operation.id)
+    .bind(&operation.sync_run_id)
+    .bind(&operation.relative_path)
+    .bind(&operation.operation_kind)
+    .bind(&operation.status)
+    .bind(operation.size_bytes)
+    .bind(&operation.error_message)
+    .bind(&operation.created_at)
+    .bind(&operation.finished_at)
+    .execute(pool)
+    .await?;
+
+    Ok(operation)
+}
+
+pub async fn list_sync_operations_for_run(
+    pool: &SqlitePool,
+    sync_run_id: &str,
+) -> Result<Vec<SyncOperation>> {
+    let rows = sqlx::query(
+        "SELECT id, sync_run_id, relative_path, operation_kind, status, size_bytes, error_message, created_at, finished_at FROM sync_operations WHERE sync_run_id = $1 ORDER BY created_at ASC",
+    )
+    .bind(sync_run_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(row_to_sync_operation).collect())
+}
+
+async fn get_sync_run(pool: &SqlitePool, run_id: &str) -> Result<SyncRun> {
+    let row = sqlx::query(
+        "SELECT id, task_id, trigger_kind, status, started_at, finished_at, files_scanned, files_changed, files_failed, bytes_sent, error_message FROM sync_runs WHERE id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row_to_sync_run(row))
 }
 
 fn row_to_node(row: sqlx::sqlite::SqliteRow) -> Node {
@@ -190,6 +435,51 @@ fn row_to_sync_task(row: sqlx::sqlite::SqliteRow) -> SyncTask {
     }
 }
 
+fn row_to_file_index_entry(row: sqlx::sqlite::SqliteRow) -> FileIndexEntry {
+    FileIndexEntry {
+        task_id: row.get("task_id"),
+        relative_path: row.get("relative_path"),
+        file_kind: row.get("file_kind"),
+        size_bytes: row.get("size_bytes"),
+        modified_at: row.get("modified_at"),
+        content_hash: row.get("content_hash"),
+        deleted: int_to_bool(row.get("deleted")),
+        last_seen_at: row.get("last_seen_at"),
+        last_synced_at: row.get("last_synced_at"),
+        updated_at: row.get("updated_at"),
+    }
+}
+
+fn row_to_sync_run(row: sqlx::sqlite::SqliteRow) -> SyncRun {
+    SyncRun {
+        id: row.get("id"),
+        task_id: row.get("task_id"),
+        trigger_kind: row.get("trigger_kind"),
+        status: row.get("status"),
+        started_at: row.get("started_at"),
+        finished_at: row.get("finished_at"),
+        files_scanned: row.get("files_scanned"),
+        files_changed: row.get("files_changed"),
+        files_failed: row.get("files_failed"),
+        bytes_sent: row.get("bytes_sent"),
+        error_message: row.get("error_message"),
+    }
+}
+
+fn row_to_sync_operation(row: sqlx::sqlite::SqliteRow) -> SyncOperation {
+    SyncOperation {
+        id: row.get("id"),
+        sync_run_id: row.get("sync_run_id"),
+        relative_path: row.get("relative_path"),
+        operation_kind: row.get("operation_kind"),
+        status: row.get("status"),
+        size_bytes: row.get("size_bytes"),
+        error_message: row.get("error_message"),
+        created_at: row.get("created_at"),
+        finished_at: row.get("finished_at"),
+    }
+}
+
 fn bool_to_int(value: bool) -> i64 {
     i64::from(value)
 }
@@ -198,7 +488,7 @@ fn int_to_bool(value: i64) -> bool {
     value != 0
 }
 
-fn now_text() -> String {
+pub fn now_text() -> String {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
@@ -260,10 +550,169 @@ mod tests {
         assert_eq!(status.enabled_tasks, 1);
         assert_eq!(list_nodes(&pool).await.unwrap(), vec![node.clone()]);
         assert_eq!(list_sync_tasks(&pool).await.unwrap(), vec![task.clone()]);
+        assert_eq!(
+            get_sync_task(&pool, &task.id).await.unwrap(),
+            Some(task.clone())
+        );
 
         assert!(remove_sync_task(&pool, &task.id).await.unwrap());
         assert!(remove_node(&pool, &node.id).await.unwrap());
         assert!(list_nodes(&pool).await.unwrap().is_empty());
         assert!(list_sync_tasks(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn file_index_upsert_updates_existing_entry() {
+        let (_temp_dir, pool) = test_pool().await;
+        let task = test_task(&pool).await;
+        let mut entry = file_entry(&task.id, "notes/a.txt", "hash-a", 12);
+
+        upsert_file_index_entries(&pool, &[entry.clone()])
+            .await
+            .unwrap();
+        entry.content_hash = Some("hash-b".to_owned());
+        entry.size_bytes = Some(18);
+        upsert_file_index_entries(&pool, &[entry]).await.unwrap();
+
+        let entries = list_file_index_for_task(&pool, &task.id).await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].content_hash.as_deref(), Some("hash-b"));
+        assert_eq!(entries[0].size_bytes, Some(18));
+        assert!(!entries[0].deleted);
+    }
+
+    #[tokio::test]
+    async fn file_index_marks_missing_entries_deleted_without_removing_rows() {
+        let (_temp_dir, pool) = test_pool().await;
+        let task = test_task(&pool).await;
+        let entry = file_entry(&task.id, "notes/a.txt", "hash-a", 12);
+
+        upsert_file_index_entries(&pool, &[entry]).await.unwrap();
+        mark_file_index_deleted(&pool, &task.id, &["notes/a.txt".to_owned()])
+            .await
+            .unwrap();
+
+        let entries = list_file_index_for_task(&pool, &task.id).await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].deleted);
+    }
+
+    #[tokio::test]
+    async fn sync_run_lifecycle_records_counts() {
+        let (_temp_dir, pool) = test_pool().await;
+        let task = test_task(&pool).await;
+        let run = create_sync_run(&pool, Some(&task.id), "manual_sync")
+            .await
+            .unwrap();
+
+        let finished = finish_sync_run(
+            &pool,
+            &run.id,
+            &FinishSyncRun {
+                status: "success".to_owned(),
+                files_scanned: 3,
+                files_changed: 2,
+                files_failed: 1,
+                bytes_sent: 42,
+                error_message: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(finished.status, "success");
+        assert_eq!(finished.files_scanned, 3);
+        assert_eq!(finished.files_changed, 2);
+        assert_eq!(finished.files_failed, 1);
+        assert_eq!(finished.bytes_sent, 42);
+        assert!(finished.finished_at.is_some());
+        assert_eq!(
+            list_recent_sync_runs(&pool, 10).await.unwrap(),
+            vec![finished]
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_operations_are_listed_by_run() {
+        let (_temp_dir, pool) = test_pool().await;
+        let task = test_task(&pool).await;
+        let run = create_sync_run(&pool, Some(&task.id), "manual_sync")
+            .await
+            .unwrap();
+
+        let operation = add_sync_operation(
+            &pool,
+            &run.id,
+            &CreateSyncOperation {
+                relative_path: "notes/a.txt".to_owned(),
+                operation_kind: "create_file".to_owned(),
+                status: "success".to_owned(),
+                size_bytes: Some(12),
+                error_message: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            list_sync_operations_for_run(&pool, &run.id).await.unwrap(),
+            vec![operation]
+        );
+    }
+
+    async fn test_pool() -> (tempfile::TempDir, SqlitePool) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let pool = initialize_database(&temp_dir.path().join("state/turbosync.db"))
+            .await
+            .unwrap();
+
+        (temp_dir, pool)
+    }
+
+    async fn test_task(pool: &SqlitePool) -> SyncTask {
+        let node = add_node(
+            pool,
+            &CreateNodeRequest {
+                name: "local".to_owned(),
+                endpoint: "local".to_owned(),
+                public_key: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        add_sync_task(
+            pool,
+            &CreateTaskRequest::one_way(
+                "docs".to_owned(),
+                "/tmp/docs".to_owned(),
+                node.id,
+                "/tmp/backup".to_owned(),
+            ),
+        )
+        .await
+        .unwrap()
+    }
+
+    fn file_entry(
+        task_id: &str,
+        relative_path: &str,
+        content_hash: &str,
+        size_bytes: i64,
+    ) -> FileIndexEntry {
+        let now = now_text();
+
+        FileIndexEntry {
+            task_id: task_id.to_owned(),
+            relative_path: relative_path.to_owned(),
+            file_kind: "file".to_owned(),
+            size_bytes: Some(size_bytes),
+            modified_at: Some(now.clone()),
+            content_hash: Some(content_hash.to_owned()),
+            deleted: false,
+            last_seen_at: now.clone(),
+            last_synced_at: None,
+            updated_at: now,
+        }
     }
 }

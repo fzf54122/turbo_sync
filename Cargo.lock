@@ -2638,6 +2638,7 @@ dependencies = [
  "tracing-subscriber",
  "turbosync-core",
  "turbosync-storage",
+ "turbosync-sync",
 ]
 
 [[package]]
@@ -2686,7 +2687,9 @@ dependencies = [
 name = "turbosync-sync"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "blake3",
+ "tempfile",
  "turbosync-core",
  "walkdir",
 ]

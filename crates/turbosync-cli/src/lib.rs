@@ -188,11 +188,21 @@ async fn run_with_cli(cli: Cli) -> Result<()> {
         }
         Command::Node { command } => run_node_command(command).await?,
         Command::Task { command } => run_task_command(command).await?,
-        Command::Sync { task_id } => println!("TurboSync sync is not implemented yet: {task_id}"),
-        Command::Rescan { task_id } => {
-            println!("TurboSync rescan is not implemented yet: {task_id}")
+        Command::Sync { task_id } => {
+            let client = AgentClient::from_config()?;
+            let response = client.sync_task(&task_id).await?;
+            output::print_sync_response(&response);
         }
-        Command::Logs { limit } => println!("TurboSync logs is not implemented yet: {limit}"),
+        Command::Rescan { task_id } => {
+            let client = AgentClient::from_config()?;
+            let response = client.rescan_task(&task_id).await?;
+            output::print_rescan_response(&response);
+        }
+        Command::Logs { limit } => {
+            let client = AgentClient::from_config()?;
+            let response = client.logs(limit).await?;
+            output::print_logs(&response);
+        }
     }
 
     Ok(())

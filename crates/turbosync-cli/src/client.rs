@@ -48,6 +48,19 @@ impl AgentClient {
         self.delete(&format!("/v1/tasks/{task_id}")).await
     }
 
+    pub async fn rescan_task(&self, task_id: &str) -> Result<RescanResponse> {
+        self.post_empty(&format!("/v1/tasks/{task_id}/rescan"))
+            .await
+    }
+
+    pub async fn sync_task(&self, task_id: &str) -> Result<SyncResponse> {
+        self.post_empty(&format!("/v1/tasks/{task_id}/sync")).await
+    }
+
+    pub async fn logs(&self, limit: u16) -> Result<LogsResponse> {
+        self.get(&format!("/v1/logs?limit={limit}")).await
+    }
+
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let response = self
             .client
@@ -69,6 +82,22 @@ impl AgentClient {
             .client
             .post(self.url(path))
             .json(body)
+            .send()
+            .await
+            .context("agent is not running; start it with `tsync agent run`")?
+            .error_for_status()
+            .context("agent request failed")?;
+
+        response
+            .json()
+            .await
+            .context("failed to decode agent response")
+    }
+
+    async fn post_empty<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let response = self
+            .client
+            .post(self.url(path))
             .send()
             .await
             .context("agent is not running; start it with `tsync agent run`")?

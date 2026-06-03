@@ -165,12 +165,13 @@ Remote Agent
 - SQLx migrations
 - Agent 本地控制 API
 - CLI 连接本地 Agent 管理节点和任务
+- 文件扫描和 SQLite 索引
+- 本地手动同步
+- 同步日志
 
 下一步：
 
-- 文件扫描和索引
-- 手动同步
-- 文件监听
+- 文件监听和防抖触发
 - Agent-to-Agent 文件传输
 
 ## 一句话介绍
