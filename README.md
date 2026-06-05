@@ -1,127 +1,134 @@
-# 🚀 TurboSync
+# 飞梭同步 TurboSync
 
 <div align="center">
 
-**一个用 Rust 编写的高性能跨平台文件同步工具，面向开发者、NAS、Linux 和 Homelab 用户**
+**一个用 Rust 编写的跨平台文件同步工具，适合开发目录、NAS、服务器和 Homelab 场景。**
 
 [![Rust](https://img.shields.io/badge/Rust-Stable-orange.svg)](https://www.rust-lang.org/)
 [![Tokio](https://img.shields.io/badge/Runtime-Tokio-blue.svg)](https://tokio.rs/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-green.svg)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[✨ 核心目标](#-核心目标) • [🏗️ 架构设计](#️-架构设计) • [🚀 快速开始](#-快速开始) • [🛠️ 技术栈](#️-技术栈) • [📚 文档](#-文档)
+[快速开始](#快速开始) | [核心能力](#核心能力) | [桌面端](#桌面端) | [命令行](#命令行) | [开发与发布](#开发与发布)
 
 </div>
 
-## ✨ 核心目标
+## 项目定位
 
-TurboSync 的目标是提供一个比 `rsync` 更简单、比 Syncthing 更容易上手的文件同步工具。
+飞梭同步是 TurboSync 的中文名。它把文件同步拆成两个角色：
 
-第一阶段 MVP 聚焦最小可用同步闭环：
+- `turbosync-agent`：本机后台同步服务，负责扫描、监听、同步和传输。
+- `tsync` / `tsync-gui`：用户入口，负责创建节点、创建任务、触发同步和查看状态。
 
-<div align="center">
+日常使用优先推荐桌面 GUI 或 TUI 控制台。普通用户不需要理解后台服务细节，GUI/TUI 会自动处理本机 Agent 的启动和关闭。
 
-| 🧩 **CLI** | 🖥️ **Agent** | 👀 **文件监听** | 🔄 **文件同步** |
-|:---:|:---:|:---:|:---:|
-| 命令行管理节点和任务 | 本地常驻同步进程 | 监听目录变化 | 将源目录同步到目标节点 |
+## 核心能力
 
-</div>
+| 能力 | 当前状态 |
+|------|----------|
+| 桌面 GUI | 已支持，Slint 原生跨平台窗口，不使用 Electron 或 WebView |
+| 终端 TUI | 已支持，默认中文，可切换 English |
+| CLI | 已支持节点、任务、同步、扫描、监听、日志 |
+| 本地同步 | 已支持本机目录到本机目录 |
+| 远端同步 | 已支持 Agent-to-Agent QUIC 文件传输 |
+| 文件监听 | 已支持 500ms 防抖，文件变化后自动扫描和同步 |
+| 同步日志 | 已支持运行记录、变更数量、失败数量、传输数据量 |
+| 节点健康检查 | 已支持连接成功、连接失败和错误信息 |
+| 双向同步 | 已提供基础验证路径，适合早期测试 |
+| 三平台打包 | 已配置 GitHub Actions，支持 Windows / Linux / macOS |
 
-第一阶段暂不作为重点实现：
+当前最稳定的主线是 **单向同步：源目录 -> 目标目录**。双向同步已有基础能力和自测流程，建议先在测试目录验证后再用于真实数据。
 
-- 用户系统
-- 权限系统
-- 集群
-- 云盘能力
-- 在线预览
-- 文档协作
+## 快速开始
 
-桌面 GUI 已作为可选入口加入，Web 页面仅作为 Agent 内置调试/轻量控制页。
-
-## 📌 当前状态
-
-已经完成：
-
-- ✅ Cargo workspace
-- ✅ `tsync` CLI 骨架
-- ✅ foreground Agent 骨架
-- ✅ `tsync init`
-- ✅ 平台标准配置目录
-- ✅ TOML 配置文件
-- ✅ SQLite 状态数据库
-- ✅ SQLx migrations
-- ✅ Agent 本地控制 API：health / status / nodes / tasks
-- ✅ CLI 通过本地 Agent API 管理节点和同步任务
-- ✅ 文件扫描和 SQLite 索引
-- ✅ 本地手动同步：rescan / sync
-- ✅ 同步 run / operation 日志
-- ✅ 文件监听 + 500ms 防抖 (notify + tokio timer)
-- ✅ Agent-to-Agent 文件传输 (QUIC / quinn)
-- ✅ CLI watch 子命令 (start / stop / status)
-- ✅ 终端仪表盘 (`tsync dashboard`, ratatui + crossterm)
-- ✅ 桌面 GUI (`tsync-gui`, Slint，Windows / Linux / macOS)
-
-## 🏗️ 架构设计
-
-```text
-CLI / TUI Dashboard / Desktop GUI
- ↓ localhost HTTP
-TurboSync Agent
- ├─ Local Control API (axum)
- ├─ SQLite State DB
- ├─ File Watcher (notify, 500ms debounce)
- ├─ Scanner / Indexer (walkdir, blake3)
- ├─ Sync Engine (本地 + 远端路由)
- └─ QUIC Transport (quinn)
-```
-
-第一阶段采用 **source → target** 的单向同步模型，源目录是权威数据源。重命名可以先按“删除旧路径 + 新增新路径”处理，后续再扩展冲突处理和双向同步。
-
-## 🚀 快速开始
-
-### 1. 打开终端同步控制台
-
-```bash
-tsync dashboard
-```
-
-第一次运行时，`dashboard` 会自动初始化本地状态，并启动本地后台同步服务。这个服务如果是由 `dashboard` 自动启动的，退出控制台时会自动关闭；如果服务本来已经在运行，`dashboard` 不会关闭它。
-
-这里的 Agent 指 TurboSync 的本地后台同步服务：它负责扫描文件、监听变化、执行同步。普通使用不需要手动管理它。
-
-终端同步控制台是日常使用入口，默认显示中文，按 `l` 可切换 English。它围绕“源目录 → 目标目录”的同步链路组织信息，支持：
-
-- 查看同步任务、后台服务状态、当前同步链路和最近活动
-- 按 `s` 同步选中任务
-- 按 `w` / `x` 开启或停止文件监听
-- 按 `e` 编辑任务
-- 按 `f` 查看文件索引
-- 按 `l` 切换中英文
-- 按 `?` 查看帮助
-
-### 2. 打开桌面 GUI
-
-桌面端中文名是 **飞梭同步**，英文名继续使用 TurboSync。它是独立二进制 `tsync-gui`，连接本机 Agent API，不使用 Electron 或 WebView。
+### 方式一：桌面 GUI
 
 ```bash
 make gui
 ```
 
-或直接运行：
+`make gui` 会先构建本机 Agent 和 CLI，再启动桌面端。
+
+GUI 启动后会自动初始化本机配置，并自动启动本机 Agent。如果这个 Agent 是 GUI 自己启动的，关闭 GUI 时会自动关闭它；如果 Agent 原本已经在运行，GUI 只连接使用，不会在退出时关闭它。
+
+桌面端支持：
+
+- 添加同步节点
+- 创建同步任务
+- 手动同步和重新扫描
+- 开启或停止文件监听
+- 查看节点健康状态
+- 查看最近同步活动
+- 删除任务和节点
+
+### 方式二：终端控制台
 
 ```bash
-cargo run --manifest-path crates/turbosync-gui/Cargo.toml
+tsync dashboard
 ```
 
-GUI 启动时会自动初始化并启动本机 Agent；如果这个 Agent 是 GUI 自己启动的，关闭 GUI 时会自动关闭它。如果本机 Agent 原本已经在运行，GUI 只会连接使用，不会在退出时关闭它。
+第一次运行时，`dashboard` 会自动初始化本机状态，并启动本机 Agent。这个 Agent 如果是 dashboard 自动启动的，退出控制台时会自动关闭；如果本来已经在运行，dashboard 不会关闭它。
 
-GUI 支持添加节点、添加任务、手动同步、扫描、监听开关、删除任务/节点、查看最近活动。双方机器仍然都需要有 Agent；本机由 GUI 自动处理，远端机器需要运行对应的 `turbosync-agent` 或 `tsync agent run`。
+常用按键：
 
-源码开发时推荐使用 `make gui`，它会先构建本机 Agent 和 CLI，确保 GUI 能启动并接管本机同步服务。
+| 按键 | 作用 |
+|------|------|
+| `s` | 同步选中任务 |
+| `w` | 开启文件监听 |
+| `x` | 停止文件监听 |
+| `e` | 编辑任务 |
+| `f` | 查看文件索引 |
+| `r` | 刷新 |
+| `l` | 中文 / English 切换 |
+| `?` | 帮助 |
+| `q` | 退出 |
 
-## 🧭 常用命令
+## 桌面端
 
-### 管理节点
+桌面端二进制名是 `tsync-gui`，产品名显示为 **飞梭同步 TurboSync**。
+
+发布包中会同时包含：
+
+- `tsync-gui`
+- `tsync`
+- `turbosync-agent`
+
+GUI 会按顺序寻找可启动的本机 Agent：
+
+1. GUI 同目录下的 `turbosync-agent`
+2. GUI 同目录下的 `tsync agent run`
+3. 源码仓库 `target/debug` 或 `target/release` 下的本机二进制
+4. `PATH` 中的 `turbosync-agent` 或 `tsync`
+
+这保证了发布包、源码开发和系统安装三种方式都能运行。
+
+吉祥物图标位于：
+
+```text
+crates/turbosync-gui/assets/feisuo-mascot.svg
+```
+
+## 命令行
+
+### 初始化
+
+通常不需要手动执行，GUI/TUI 会自动初始化。
+
+```bash
+tsync init
+```
+
+### 前台运行 Agent
+
+用于远端机器、Docker、服务器或调试日志：
+
+```bash
+tsync agent run
+```
+
+### 添加节点
+
+本机添加远端 Agent：
 
 ```bash
 tsync node add nas 192.168.1.20:38746
@@ -129,76 +136,118 @@ tsync node list
 tsync node remove <node-id>
 ```
 
-### 管理同步任务
+如果远端启用了证书指纹校验：
+
+```bash
+tsync node add nas 192.168.1.20:38746 --cert-fingerprint <sha256>
+```
+
+### 创建同步任务
 
 ```bash
 tsync task add documents \
   --source ~/Documents \
   --target-node <node-id> \
   --target-path /backup/Documents
+```
 
+任务管理：
+
+```bash
 tsync task list
 tsync task remove <task-id>
 ```
 
-### 文件监听
+### 同步、扫描、监听和日志
 
 ```bash
+tsync sync <task-id>
+tsync rescan <task-id>
 tsync watch <task-id> start
 tsync watch <task-id> status
 tsync watch <task-id> stop
+tsync logs --limit 20
 ```
 
-Agent 会在文件变化时自动触发 rescan + sync（500ms 防抖）。
+## Docker / 远端机器
 
-### 手动扫描、同步和日志
+远端机器只需要运行 Agent，并暴露控制和传输端口。
+
+示例：
 
 ```bash
-tsync rescan <task-id>
-tsync sync <task-id>
-tsync logs --limit 50
+tsync agent run
 ```
 
-如果 sync task 的 target_node 是远端节点，Agent 会通过 QUIC 将文件传输到远端 Agent。
+Docker 示例：
 
-## 🛠️ 技术栈
+```bash
+docker run -it \
+  --name ubuntu-01 \
+  -p 127.0.0.1:38750:38745 \
+  -d \
+  ubuntu:24.04
+```
 
-| 模块 | 技术选型 | 原因 |
-|------|----------|------|
-| **语言** | Rust Stable | 性能、安全、适合系统工具 |
-| **异步运行时** | Tokio | Rust 异步生态事实标准 |
-| **CLI** | Clap | 成熟、易维护 |
-| **本地 API** | Axum | 简洁、Tokio 原生 |
-| **数据库** | SQLite | 单机 Agent 最小依赖 |
-| **数据库访问** | SQLx | 迁移成熟、SQL 清晰 |
-| **文件监听** | Notify | 跨平台文件监听成熟方案 |
-| **哈希** | Blake3 | 适合大量文件指纹计算 |
-| **传输** | Quinn | 使用成熟 QUIC 实现 |
-| **TUI** | Ratatui + Crossterm | 终端仪表盘 |
-| **桌面 GUI** | Slint | 原生跨平台窗口，不依赖 Electron / WebView |
-| **日志** | Tracing | Rust 异步日志标准方案 |
+容器内安装或复制 TurboSync 后运行：
 
-## 📁 Workspace 结构
+```bash
+tsync agent run
+```
+
+本机添加节点时使用映射出来的地址：
+
+```bash
+tsync node add docker-ubuntu 127.0.0.1:38750
+```
+
+## 架构
+
+```text
+Desktop GUI / TUI Dashboard / CLI
+        |
+        | localhost HTTP
+        v
+TurboSync Agent
+  |-- Local Control API (axum)
+  |-- SQLite State DB
+  |-- File Watcher (notify)
+  |-- Scanner / Indexer (walkdir + blake3)
+  |-- Sync Engine
+  |-- QUIC Transport (quinn)
+```
+
+工作流：
+
+1. GUI/TUI/CLI 调用本机 Agent API。
+2. Agent 扫描源目录，写入 SQLite 文件索引。
+3. 同步引擎生成创建、更新、删除计划。
+4. 本地目标直接复制文件。
+5. 远端目标通过 QUIC 发送到目标 Agent。
+6. 同步结果写入日志，并展示在 GUI/TUI/CLI 中。
+
+## Workspace
 
 ```text
 turbo_sync/
-├── crates/
-│   ├── turbosync-agent/      # 本地 Agent 和控制 API
-│   ├── turbosync-cli/        # tsync 命令行入口
-│   ├── turbosync-core/       # 配置、模型、通用类型
-│   ├── turbosync-gui/        # 桌面 GUI (Slint，独立 workspace)
-│   ├── turbosync-storage/    # SQLite / SQLx 持久化
-│   ├── turbosync-sync/       # 文件扫描、同步引擎、文件监听
-│   ├── turbosync-transport/  # Agent-to-Agent QUIC 传输
-│   └── turbosync-tui/        # 终端仪表盘 (ratatui)
-├── migrations/               # SQLx migrations
-├── docs/                     # 用户指南、开发自测、产品文案
-└── README.md
+|-- crates/
+|   |-- turbosync-agent/      # 本机 Agent 和控制 API
+|   |-- turbosync-cli/        # tsync 命令行入口
+|   |-- turbosync-core/       # 配置、模型、通用类型
+|   |-- turbosync-gui/        # 桌面 GUI，独立 workspace
+|   |-- turbosync-storage/    # SQLite / SQLx 持久化
+|   |-- turbosync-sync/       # 文件扫描、同步引擎、文件监听
+|   |-- turbosync-transport/  # Agent-to-Agent QUIC 传输
+|   `-- turbosync-tui/        # 终端仪表盘
+|-- migrations/               # SQLx migrations
+|-- docs/                     # 用户指南、自测流程、产品文案
+|-- Makefile
+`-- README.md
 ```
 
-## 🧪 本地开发
+## 开发与发布
 
-运行全部检查：
+### 本地检查
 
 ```bash
 make check
@@ -212,57 +261,46 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-如果运行环境限制本地端口绑定，`turbosync-transport` 的 QUIC 测试可能因为无法绑定 `127.0.0.1` 失败；在普通本机终端或允许本地端口绑定的环境中应通过。
-
-使用临时配置和数据库路径进行手动测试：
-
-```bash
-make selftest-init
-make selftest-agent
-make selftest-dashboard
-```
-
-桌面 GUI 是独立 workspace，避免和 TUI 依赖发生版本冲突：
+GUI 是独立 workspace，需要单独检查：
 
 ```bash
 make build-gui
-make gui
+cargo fmt --manifest-path crates/turbosync-gui/Cargo.toml --all --check
+cargo clippy --manifest-path crates/turbosync-gui/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path crates/turbosync-gui/Cargo.toml
 ```
 
-完整手动验收流程见：
+### 手动自测
+
+详细流程见：
 
 ```text
 docs/testing.zh.md
 ```
 
-推荐发布前至少完成：
+覆盖：
 
-- 自动检查：fmt / clippy / test 全部通过
-- 单机双 Agent 远端同步：创建、更新、删除
-- watch 自动同步
-- TUI：状态查看、手动同步、进度显示、任务编辑、文件浏览、watch 开关
+- 本地 -> 本地
+- 本地 -> 远端
+- 双向同步基础验证
+- TUI 快速验收
 
-## 🚢 发布
+### GitHub Actions
 
-GitHub Actions 会在 PR 和 `main` / `master` 分支 push 时自动运行格式、Clippy 和测试检查，并单独检查桌面 GUI。
+CI 已配置：
 
-发布版本通过 `v*` tag 触发，自动构建 Windows / Linux / macOS 包，包含：
+- Rust workspace 格式检查
+- Rust workspace clippy
+- Rust workspace tests
+- Desktop GUI build/check
+- Desktop GUI fmt/clippy
 
-- `tsync`
-- `turbosync-agent`
-- `tsync-gui`
-- `README.md`
-- `LICENSE`
+Release workflow 会在 `v*` tag 推送时构建三平台包：
 
-发布前本地检查：
-
-```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo build --release --workspace
-cargo build --release --manifest-path crates/turbosync-gui/Cargo.toml
-```
+- Linux x64
+- macOS x64
+- macOS ARM64
+- Windows x64
 
 创建发布：
 
@@ -271,16 +309,29 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-tag 版本应与根 `Cargo.toml` 的 workspace version 保持一致。当前阶段适合软推广和招募早期测试用户；更大范围推广建议等 `v0.1.0` Release 和三平台二进制包可下载后再进行。
-
-## 📚 文档
-
-当前文档：
+## 文档
 
 ```text
+docs/user-guide.zh.md          # 用户使用指南，TUI 优先
 docs/testing.zh.md             # 开发和发布前自测流程
-docs/user-guide.zh.md          # 用户使用指南（TUI 优先）
-docs/product/landing.zh.md     # 产品介绍和未来官网文案
+docs/product/landing.zh.md     # 产品介绍和官网文案
 ```
 
-README 用于项目入口、当前实现状态和快速开始；`docs/user-guide.zh.md` 面向日常使用；`docs/testing.zh.md` 面向开发和发布前验收。
+## 适用场景
+
+- 开发目录在多台机器之间同步
+- 本机项目目录同步到 NAS
+- Linux 服务器和本地工作站之间同步
+- Docker / Homelab 环境里的目录传输
+- 想用 TUI 或 GUI 管理同步任务，而不是手写复杂命令
+
+## 当前边界
+
+- 推荐先使用单向同步处理真实数据。
+- 双向同步仍建议在测试目录中验证后再使用。
+- 远端同步建议在可信网络中运行，并配置证书指纹。
+- 大规模团队权限、云盘协作、在线预览不是当前版本目标。
+
+## License
+
+MIT
