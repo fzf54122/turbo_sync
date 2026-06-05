@@ -23,8 +23,16 @@ pub struct Node {
     pub endpoint: String,
     pub public_key: Option<String>,
     pub enabled: bool,
+    #[serde(default = "default_node_health_status")]
+    pub health_status: String,
+    pub health_message: Option<String>,
+    pub last_checked_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn default_node_health_status() -> String {
+    "unchecked".to_owned()
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
@@ -43,9 +51,15 @@ pub struct SyncTask {
     pub target_path: String,
     pub direction: String,
     pub delete_mode: String,
+    #[serde(default = "default_conflict_mode")]
+    pub conflict_mode: String,
     pub enabled: bool,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn default_conflict_mode() -> String {
+    "newest_wins".to_owned()
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
@@ -116,6 +130,55 @@ pub struct CreateTaskRequest {
     pub target_path: String,
     pub direction: String,
     pub delete_mode: String,
+    #[serde(default = "default_conflict_mode")]
+    pub conflict_mode: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
+pub struct SyncEvent {
+    pub id: String,
+    pub task_id: String,
+    pub relative_path: String,
+    pub event_kind: String,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub created_at: String,
+    pub processed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
+pub struct WatchStatus {
+    pub task_id: String,
+    pub watching: bool,
+    pub source_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
+pub struct UpdateTaskRequest {
+    pub name: Option<String>,
+    pub source_path: Option<String>,
+    pub target_path: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
+pub struct FileListResponse {
+    pub task_id: String,
+    pub files: Vec<FileIndexEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SseEvent {
+    pub event: String,
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SyncProgressEvent {
+    pub task_id: String,
+    pub current: u32,
+    pub total: u32,
+    pub message: String,
 }
 
 impl CreateTaskRequest {
@@ -133,6 +196,26 @@ impl CreateTaskRequest {
             target_path,
             direction: "one_way".to_owned(),
             delete_mode: "propagate".to_owned(),
+            conflict_mode: "newest_wins".to_owned(),
+        }
+    }
+
+    #[must_use]
+    pub fn two_way(
+        name: String,
+        source_path: String,
+        target_node_id: String,
+        target_path: String,
+        conflict_mode: String,
+    ) -> Self {
+        Self {
+            name,
+            source_path,
+            target_node_id,
+            target_path,
+            direction: "two_way".to_owned(),
+            delete_mode: "propagate".to_owned(),
+            conflict_mode,
         }
     }
 }

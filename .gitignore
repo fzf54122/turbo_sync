@@ -1,4 +1,47 @@
-/target
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+
+# Rust tooling / coverage
+/.cargo/.package-cache
+/tarpaulin-report.html
+/cobertura.xml
+/lcov.info
+/*.profraw
+/*.profdata
+
+# Local environment
 .env
 .env.*
 !.env.example
+
+# TurboSync local state and self-test output
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+/tmp/
+/dist/
+
+# Logs and runtime files
+*.log
+*.pid
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local assistant/tooling metadata
+.agents/
+.codex/
+.claude/

@@ -24,6 +24,17 @@ impl AgentClient {
         self.get("/v1/status").await
     }
 
+    pub async fn health_check(&self) -> Result<()> {
+        let response = self
+            .client
+            .get(self.url("/health"))
+            .send()
+            .await
+            .context("local sync service is not running")?;
+        Self::expect_success(response, "local sync service health check failed").await?;
+        Ok(())
+    }
+
     pub async fn add_node(&self, request: &CreateNodeRequest) -> Result<Node> {
         self.post("/v1/nodes", request).await
     }
@@ -57,6 +68,18 @@ impl AgentClient {
         self.post_empty(&format!("/v1/tasks/{task_id}/sync")).await
     }
 
+    pub async fn start_watch(&self, task_id: &str) -> Result<WatchStatus> {
+        self.post_empty(&format!("/v1/tasks/{task_id}/watch")).await
+    }
+
+    pub async fn stop_watch(&self, task_id: &str) -> Result<bool> {
+        self.delete(&format!("/v1/tasks/{task_id}/watch")).await
+    }
+
+    pub async fn get_watch_status(&self, task_id: &str) -> Result<WatchStatus> {
+        self.get(&format!("/v1/tasks/{task_id}/watch")).await
+    }
+
     pub async fn logs(&self, limit: u16) -> Result<LogsResponse> {
         self.get(&format!("/v1/logs?limit={limit}")).await
     }
@@ -67,9 +90,8 @@ impl AgentClient {
             .get(self.url(path))
             .send()
             .await
-            .context("agent is not running; start it with `tsync agent run`")?
-            .error_for_status()
-            .context("agent request failed")?;
+            .context("agent is not running; start it with `tsync agent run`")?;
+        let response = Self::expect_success(response, "agent request failed").await?;
 
         response
             .json()
@@ -84,9 +106,8 @@ impl AgentClient {
             .json(body)
             .send()
             .await
-            .context("agent is not running; start it with `tsync agent run`")?
-            .error_for_status()
-            .context("agent request failed")?;
+            .context("agent is not running; start it with `tsync agent run`")?;
+        let response = Self::expect_success(response, "agent request failed").await?;
 
         response
             .json()
@@ -100,9 +121,8 @@ impl AgentClient {
             .post(self.url(path))
             .send()
             .await
-            .context("agent is not running; start it with `tsync agent run`")?
-            .error_for_status()
-            .context("agent request failed")?;
+            .context("agent is not running; start it with `tsync agent run`")?;
+        let response = Self::expect_success(response, "agent request failed").await?;
 
         response
             .json()
@@ -122,15 +142,33 @@ impl AgentClient {
             StatusCode::NO_CONTENT => Ok(true),
             StatusCode::NOT_FOUND => Ok(false),
             _ => {
-                response
-                    .error_for_status()
-                    .context("agent request failed")?;
-                Ok(true)
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                if body.trim().is_empty() {
+                    anyhow::bail!("agent request failed: {status}");
+                }
+                anyhow::bail!("agent request failed: {status}: {body}");
             }
         }
     }
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
+    }
+
+    async fn expect_success(
+        response: reqwest::Response,
+        context: &str,
+    ) -> Result<reqwest::Response> {
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if body.trim().is_empty() {
+            anyhow::bail!("{context}: {status}");
+        }
+        anyhow::bail!("{context}: {status}: {body}");
     }
 }

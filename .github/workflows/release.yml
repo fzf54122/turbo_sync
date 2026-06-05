@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux x64
+            target: x86_64-unknown-linux-gnu
+            bin_ext: ""
+            archive: tar.gz
+          - os: macos-13
+            label: macOS x64
+            target: x86_64-apple-darwin
+            bin_ext: ""
+            archive: tar.gz
+          - os: macos-latest
+            label: macOS ARM64
+            target: aarch64-apple-darwin
+            bin_ext: ""
+            archive: tar.gz
+          - os: windows-latest
+            label: Windows x64
+            target: x86_64-pc-windows-msvc
+            bin_ext: ".exe"
+            archive: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfontconfig1-dev \
+            libgl1-mesa-dev \
+            libwayland-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+
+      - name: Build CLI and agent
+        run: cargo build --release --target ${{ matrix.target }} --workspace
+
+      - name: Build desktop GUI
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path crates/turbosync-gui/Cargo.toml
+
+      - name: Prepare package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME:-manual}"
+          PACKAGE="turbosync-${VERSION}-${{ matrix.target }}"
+          MAIN_TARGET="target/${{ matrix.target }}/release"
+          GUI_TARGET="crates/turbosync-gui/target/${{ matrix.target }}/release"
+
+          mkdir -p "dist/${PACKAGE}"
+          cp "${MAIN_TARGET}/tsync${{ matrix.bin_ext }}" "dist/${PACKAGE}/"
+          cp "${MAIN_TARGET}/turbosync-agent${{ matrix.bin_ext }}" "dist/${PACKAGE}/"
+          cp "${GUI_TARGET}/tsync-gui${{ matrix.bin_ext }}" "dist/${PACKAGE}/"
+          cp README.md LICENSE "dist/${PACKAGE}/"
+
+      - name: Archive Unix package
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME:-manual}"
+          PACKAGE="turbosync-${VERSION}-${{ matrix.target }}"
+          tar -C dist -czf "dist/${PACKAGE}.tar.gz" "${PACKAGE}"
+
+      - name: Archive Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "manual" }
+          $package = "turbosync-$version-${{ matrix.target }}"
+          Compress-Archive -Path "dist/$package/*" -DestinationPath "dist/$package.zip" -Force
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: turbosync-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+          generate_release_notes: true

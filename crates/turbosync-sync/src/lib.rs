@@ -1,3 +1,5 @@
+pub mod watcher;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -24,6 +26,13 @@ pub struct ScanResult {
     pub entries: Vec<ScannedEntry>,
     pub files_scanned: i64,
     pub bytes_scanned: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Conflict {
+    pub relative_path: String,
+    pub local_modified: Option<String>,
+    pub remote_modified: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,6 +195,138 @@ pub fn plan_changes(
     });
     operations.extend(delete_operations);
     operations
+}
+
+/// Determine what files need to be pulled from the remote peer.
+///
+/// Compares the remote file index against the local scan, returning operations
+/// for files that exist on the remote but are missing or different locally.
+pub fn plan_remote_changes(
+    remote_index: &[FileIndexEntry],
+    local_scan: &[ScannedEntry],
+) -> Vec<PlannedOperation> {
+    let remote_by_path: BTreeMap<&str, &FileIndexEntry> = remote_index
+        .iter()
+        .filter(|e| !e.deleted)
+        .map(|entry| (entry.relative_path.as_str(), entry))
+        .collect();
+    let local_by_path: BTreeMap<&str, &ScannedEntry> = local_scan
+        .iter()
+        .map(|entry| (entry.relative_path.as_str(), entry))
+        .collect();
+    let mut operations = Vec::new();
+
+    for remote_entry in remote_by_path.values() {
+        match local_by_path.get(remote_entry.relative_path.as_str()) {
+            None => {
+                operations.push(PlannedOperation {
+                    relative_path: remote_entry.relative_path.clone(),
+                    kind: if remote_entry.file_kind == "dir" {
+                        PlannedOperationKind::CreateDir
+                    } else {
+                        PlannedOperationKind::CreateFile
+                    },
+                    size_bytes: remote_entry.size_bytes,
+                });
+            }
+            Some(local_entry) => {
+                if remote_entry.file_kind == "file"
+                    && local_entry.file_kind == "file"
+                    && remote_entry.content_hash != local_entry.content_hash
+                {
+                    operations.push(PlannedOperation {
+                        relative_path: remote_entry.relative_path.clone(),
+                        kind: PlannedOperationKind::UpdateFile,
+                        size_bytes: remote_entry.size_bytes,
+                    });
+                }
+            }
+        }
+    }
+
+    operations
+}
+
+/// Detect conflicts where both local and remote sides modified the same file.
+pub fn detect_conflicts(
+    local_ops: &[PlannedOperation],
+    remote_ops: &[PlannedOperation],
+    local_scan: &[ScannedEntry],
+    remote_index: &[FileIndexEntry],
+) -> Vec<Conflict> {
+    let local_scan_by_path: BTreeMap<&str, &ScannedEntry> = local_scan
+        .iter()
+        .map(|e| (e.relative_path.as_str(), e))
+        .collect();
+    let remote_index_by_path: BTreeMap<&str, &FileIndexEntry> = remote_index
+        .iter()
+        .map(|e| (e.relative_path.as_str(), e))
+        .collect();
+
+    let local_changes: BTreeSet<&str> = local_ops
+        .iter()
+        .filter(|op| {
+            matches!(
+                op.kind,
+                PlannedOperationKind::CreateFile | PlannedOperationKind::UpdateFile
+            )
+        })
+        .map(|op| op.relative_path.as_str())
+        .collect();
+    let remote_changes: BTreeSet<&str> = remote_ops
+        .iter()
+        .filter(|op| {
+            matches!(
+                op.kind,
+                PlannedOperationKind::CreateFile | PlannedOperationKind::UpdateFile
+            )
+        })
+        .map(|op| op.relative_path.as_str())
+        .collect();
+
+    local_changes
+        .intersection(&remote_changes)
+        .map(|path| Conflict {
+            relative_path: (*path).to_owned(),
+            local_modified: local_scan_by_path
+                .get(path)
+                .and_then(|e| e.modified_at.clone()),
+            remote_modified: remote_index_by_path
+                .get(path)
+                .and_then(|e| e.modified_at.clone()),
+        })
+        .collect()
+}
+
+/// Resolve conflicts using newest-wins strategy.
+///
+/// Returns `(local_wins, remote_wins)` — sets of relative paths.
+/// The losing side's file should be backed up as `.tsync-conflict-<timestamp>`.
+#[must_use]
+pub fn resolve_newest_wins(conflicts: &[Conflict]) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut local_wins = BTreeSet::new();
+    let mut remote_wins = BTreeSet::new();
+
+    for conflict in conflicts {
+        let local_ts = conflict
+            .local_modified
+            .as_deref()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        let remote_ts = conflict
+            .remote_modified
+            .as_deref()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        if local_ts >= remote_ts {
+            local_wins.insert(conflict.relative_path.clone());
+        } else {
+            remote_wins.insert(conflict.relative_path.clone());
+        }
+    }
+
+    (local_wins, remote_wins)
 }
 
 pub fn apply_local_operations(
@@ -548,6 +689,141 @@ mod tests {
         assert!(summary.failed[0]
             .error_message
             .contains("escapes sync root"));
+    }
+
+    // ── plan_remote_changes / detect_conflicts / resolve_newest_wins ────
+
+    #[test]
+    fn plan_remote_changes_detects_missing_and_different_files() {
+        let remote_index = vec![
+            file_index_entry("a.txt", "file", Some("hash_a"), Some(10), false),
+            file_index_entry("b.txt", "file", Some("hash_b"), Some(20), false),
+            file_index_entry("deleted.txt", "file", Some("hash_d"), Some(5), true),
+            file_index_entry("notes", "dir", None, None, false),
+        ];
+        let local_scan = vec![
+            scanned_entry("a.txt", "file", Some("hash_a"), Some(10)),
+            scanned_entry("b.txt", "file", Some("different"), Some(20)),
+        ];
+
+        let ops = plan_remote_changes(&remote_index, &local_scan);
+
+        // notes is new (missing locally) → create dir
+        assert!(ops.contains(&planned("notes", PlannedOperationKind::CreateDir, None)));
+        // b.txt has different hash → update
+        assert!(ops.contains(&planned(
+            "b.txt",
+            PlannedOperationKind::UpdateFile,
+            Some(20)
+        )));
+        // a.txt is identical → no op
+        assert!(!ops.iter().any(|op| op.relative_path == "a.txt"));
+        // deleted.txt is deleted on remote → skipped
+        assert!(!ops.iter().any(|op| op.relative_path == "deleted.txt"));
+        // No extra ops
+        assert_eq!(ops.len(), 2);
+    }
+
+    #[test]
+    fn detect_conflicts_finds_files_modified_on_both_sides() {
+        let local_ops = vec![
+            planned("shared.txt", PlannedOperationKind::UpdateFile, Some(10)),
+            planned("only_local.txt", PlannedOperationKind::CreateFile, Some(5)),
+        ];
+        let remote_ops = vec![
+            planned("shared.txt", PlannedOperationKind::UpdateFile, Some(12)),
+            planned("only_remote.txt", PlannedOperationKind::CreateFile, Some(8)),
+        ];
+        let local_scan = vec![
+            scanned_entry("shared.txt", "file", Some("local_hash"), Some(10)),
+            scanned_entry("only_local.txt", "file", Some("hash"), Some(5)),
+        ];
+        let remote_index = vec![
+            file_index_entry("shared.txt", "file", Some("remote_hash"), Some(12), false),
+            file_index_entry("only_remote.txt", "file", Some("hash"), Some(8), false),
+        ];
+
+        let conflicts = detect_conflicts(&local_ops, &remote_ops, &local_scan, &remote_index);
+
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].relative_path, "shared.txt");
+    }
+
+    #[test]
+    fn detect_conflicts_no_overlap_returns_empty() {
+        let local_ops = vec![planned(
+            "local.txt",
+            PlannedOperationKind::CreateFile,
+            Some(5),
+        )];
+        let remote_ops = vec![planned(
+            "remote.txt",
+            PlannedOperationKind::CreateFile,
+            Some(8),
+        )];
+        let local_scan = vec![scanned_entry("local.txt", "file", Some("hash"), Some(5))];
+        let remote_index = vec![file_index_entry(
+            "remote.txt",
+            "file",
+            Some("hash"),
+            Some(8),
+            false,
+        )];
+
+        let conflicts = detect_conflicts(&local_ops, &remote_ops, &local_scan, &remote_index);
+
+        assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn resolve_newest_wins_local_newer_wins() {
+        let conflicts = vec![Conflict {
+            relative_path: "file.txt".to_owned(),
+            local_modified: Some("200".to_owned()),
+            remote_modified: Some("100".to_owned()),
+        }];
+
+        let (local_wins, remote_wins) = resolve_newest_wins(&conflicts);
+
+        assert!(local_wins.contains("file.txt"));
+        assert!(remote_wins.is_empty());
+    }
+
+    #[test]
+    fn resolve_newest_wins_remote_newer_wins() {
+        let conflicts = vec![Conflict {
+            relative_path: "file.txt".to_owned(),
+            local_modified: Some("100".to_owned()),
+            remote_modified: Some("200".to_owned()),
+        }];
+
+        let (local_wins, remote_wins) = resolve_newest_wins(&conflicts);
+
+        assert!(remote_wins.contains("file.txt"));
+        assert!(local_wins.is_empty());
+    }
+
+    #[test]
+    fn resolve_newest_wins_missing_timestamps_default_to_zero() {
+        let conflicts = vec![
+            Conflict {
+                relative_path: "a.txt".to_owned(),
+                local_modified: Some("1".to_owned()),
+                remote_modified: None,
+            },
+            Conflict {
+                relative_path: "b.txt".to_owned(),
+                local_modified: None,
+                remote_modified: Some("1".to_owned()),
+            },
+        ];
+
+        let (local_wins, remote_wins) = resolve_newest_wins(&conflicts);
+
+        // a.txt: local=1, remote=0 → local wins
+        assert!(local_wins.contains("a.txt"));
+        // b.txt: local=0, remote=1 → remote wins
+        assert!(remote_wins.contains("b.txt"));
     }
 
     fn planned(

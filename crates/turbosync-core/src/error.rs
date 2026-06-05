@@ -30,6 +30,8 @@ pub enum Error {
     },
     #[error("failed to serialize config")]
     SerializeConfig(#[from] toml::ser::Error),
+    #[error("failed to generate TLS certificate: {0}")]
+    Cert(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,5 +1,6 @@
+use turbosync_core::display::{format_bytes, format_unix_time};
 use turbosync_core::models::{
-    LogsResponse, Node, RescanResponse, StatusResponse, SyncResponse, SyncTask,
+    LogsResponse, Node, RescanResponse, StatusResponse, SyncResponse, SyncTask, WatchStatus,
 };
 
 pub fn print_status(status: &StatusResponse) {
@@ -15,7 +16,15 @@ pub fn print_status(status: &StatusResponse) {
 }
 
 pub fn print_node(node: &Node) {
-    println!("{}\t{}\t{}", node.id, node.name, node.endpoint);
+    println!(
+        "{}\t{}\t{}\t{}",
+        node.id, node.name, node.endpoint, node.health_status
+    );
+    if let Some(message) = node.health_message.as_deref() {
+        if !message.is_empty() {
+            println!("\thealth_error={message}");
+        }
+    }
 }
 
 pub fn print_nodes(nodes: &[Node]) {
@@ -31,8 +40,14 @@ pub fn print_nodes(nodes: &[Node]) {
 
 pub fn print_task(task: &SyncTask) {
     println!(
-        "{}\t{}\t{} -> {}:{}",
-        task.id, task.name, task.source_path, task.target_node_id, task.target_path
+        "{}\t{}\t{}\t{} -> {}:{}\t{}",
+        task.id,
+        task.name,
+        task.direction,
+        task.source_path,
+        task.target_node_id,
+        task.target_path,
+        task.conflict_mode
     );
 }
 
@@ -65,7 +80,13 @@ pub fn print_sync_response(response: &SyncResponse) {
     println!("Status: {}", response.run.status);
     println!("Operations: {}", response.operations.len());
     println!("Failed: {failed}");
-    println!("Bytes copied: {}", response.run.bytes_sent);
+    println!("Bytes copied: {}", format_bytes(response.run.bytes_sent));
+}
+
+pub fn print_watch_status(status: &WatchStatus) {
+    println!("Task: {}", status.task_id);
+    println!("Watching: {}", status.watching);
+    println!("Source: {}", status.source_path);
 }
 
 pub fn print_logs(response: &LogsResponse) {
@@ -75,14 +96,23 @@ pub fn print_logs(response: &LogsResponse) {
     }
 
     for run in &response.runs {
+        let error = run
+            .error_message
+            .as_deref()
+            .map(|message| format!("\terror={message}"))
+            .unwrap_or_default();
         println!(
-            "{}\t{}\t{}\tchanged={}\tfailed={}\tfinished={}",
+            "{}\t{}\t{}\tchanged={}\tfailed={}\tdata={}\tfinished={}",
             run.id,
             run.trigger_kind,
             run.status,
             run.files_changed,
             run.files_failed,
-            run.finished_at.as_deref().unwrap_or("-")
+            format_bytes(run.bytes_sent),
+            format_unix_time(run.finished_at.as_deref(), "running")
         );
+        if !error.is_empty() {
+            println!("{error}");
+        }
     }
 }

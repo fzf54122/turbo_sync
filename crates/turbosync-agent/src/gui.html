@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TurboSync</title>
+  <style>
+    :root {
+      --bg: #f6f7f4;
+      --surface: #ffffff;
+      --surface-2: #eef2ef;
+      --ink: #18211f;
+      --muted: #65716d;
+      --line: #d7ded9;
+      --teal: #0f766e;
+      --teal-dark: #115e59;
+      --amber: #b45309;
+      --red: #b42318;
+      --green: #15803d;
+      --blue: #2563eb;
+      --shadow: 0 1px 2px rgba(19, 31, 28, .08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    button, input, select {
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 220px;
+    }
+
+    .brand strong {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .brand span {
+      color: var(--muted);
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .status-strip {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 10px 20px 14px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-height: 64px;
+    }
+
+    .metric label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    main {
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 18px 20px 24px;
+      display: grid;
+      grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .section-head {
+      min-height: 50px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fbfcfa;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
+    .subtle {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .form {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input, select {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 7px 9px;
+      outline: none;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .14);
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 7px 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover { border-color: #aebbb5; background: #f7faf8; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+
+    .primary {
+      background: var(--teal);
+      border-color: var(--teal);
+      color: white;
+    }
+
+    .primary:hover {
+      background: var(--teal-dark);
+      border-color: var(--teal-dark);
+    }
+
+    .danger { color: var(--red); }
+    .warn { color: var(--amber); }
+    .ok { color: var(--green); }
+    .info { color: var(--blue); }
+
+    .list {
+      display: grid;
+    }
+
+    .row {
+      min-height: 74px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+    }
+
+    .row:last-child { border-bottom: 0; }
+
+    .row-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .row-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-weight: 650;
+    }
+
+    .row-title span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .row-meta {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      background: #fbfcfa;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex: 0 0 auto;
+    }
+
+    .dot.ok { background: var(--green); }
+    .dot.warn { background: var(--amber); }
+    .dot.danger { background: var(--red); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      background: #fbfcfa;
+      font-weight: 600;
+    }
+
+    td.wrap {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      padding: 28px 14px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      min-width: min(560px, calc(100vw - 32px));
+      max-width: calc(100vw - 32px);
+      background: #18211f;
+      color: white;
+      border-radius: 8px;
+      padding: 10px 12px;
+      box-shadow: 0 10px 28px rgba(24, 33, 31, .22);
+      display: none;
+      z-index: 20;
+    }
+
+    .toast.show { display: block; }
+
+    @media (max-width: 980px) {
+      .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      main { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .toolbar { justify-content: flex-start; }
+      .status-strip { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .row-main { align-items: flex-start; flex-direction: column; }
+      .actions { justify-content: flex-start; }
+      th:nth-child(1), td:nth-child(1) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="topbar">
+        <div class="brand">
+          <strong>TurboSync</strong>
+          <span>文件同步控制台</span>
+        </div>
+        <div class="toolbar">
+          <button id="refreshBtn" title="刷新"><span>↻</span><span>刷新</span></button>
+          <button id="openApiBtn" title="打开健康检查"><span>◎</span><span>健康</span></button>
+        </div>
+      </div>
+      <div class="status-strip" id="statusStrip"></div>
+    </header>
+
+    <main>
+      <div class="stack">
+        <section>
+          <div class="section-head">
+            <h2>节点</h2>
+            <span class="subtle" id="nodeCount">0 个</span>
+          </div>
+          <form class="form" id="nodeForm">
+            <div class="grid-2">
+              <div class="field">
+                <label for="nodeName">名称</label>
+                <input id="nodeName" name="name" placeholder="ubuntu-01" autocomplete="off" required>
+              </div>
+              <div class="field">
+                <label for="nodeEndpoint">同步地址</label>
+                <input id="nodeEndpoint" name="endpoint" placeholder="127.0.0.1:38750" autocomplete="off" required>
+              </div>
+            </div>
+            <div class="field">
+              <label for="nodeFingerprint">证书指纹</label>
+              <input id="nodeFingerprint" name="public_key" placeholder="可选" autocomplete="off">
+            </div>
+            <button class="primary" type="submit"><span>＋</span><span>添加节点</span></button>
+          </form>
+          <div class="list" id="nodeList"></div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section>
+          <div class="section-head">
+            <h2>同步任务</h2>
+            <span class="subtle" id="taskCount">0 个</span>
+          </div>
+          <form class="form" id="taskForm">
+            <div class="grid-2">
+              <div class="field">
+                <label for="taskName">任务名</label>
+                <input id="taskName" name="name" placeholder="shell" autocomplete="off" required>
+              </div>
+              <div class="field">
+                <label for="targetNode">目标节点</label>
+                <select id="targetNode" name="target_node_id" required></select>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="sourcePath">源目录</label>
+                <input id="sourcePath" name="source_path" placeholder="/home/fzf/code/shell" autocomplete="off" required>
+              </div>
+              <div class="field">
+                <label for="targetPath">目标目录</label>
+                <input id="targetPath" name="target_path" placeholder="/home/ubuntu/shell" autocomplete="off" required>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="direction">方向</label>
+                <select id="direction" name="direction">
+                  <option value="one_way">单向同步</option>
+                  <option value="two_way">双向同步</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="conflictMode">冲突策略</label>
+                <select id="conflictMode" name="conflict_mode">
+                  <option value="newest_wins">最新文件优先</option>
+                  <option value="manual">手动处理</option>
+                </select>
+              </div>
+            </div>
+            <button class="primary" type="submit"><span>＋</span><span>添加任务</span></button>
+          </form>
+          <div class="list" id="taskList"></div>
+        </section>
+
+        <section>
+          <div class="section-head">
+            <h2>最近活动</h2>
+            <span class="subtle" id="logCount">0 条</span>
+          </div>
+          <div id="logTable"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = {
+      status: null,
+      nodes: [],
+      tasks: [],
+      logs: [],
+      watched: new Set(),
+      busy: false,
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function shortId(id) {
+      return (id || '').slice(0, 8);
+    }
+
+    function formatBytes(bytes) {
+      const value = Math.max(0, Number(bytes || 0));
+      if (value < 1024) return `${value} B`;
+      if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+      if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+      return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+    }
+
+    function formatTime(value, fallback = '-') {
+      if (!value) return fallback;
+      const timestamp = Number(value);
+      if (!Number.isFinite(timestamp)) return value;
+      const date = new Date(timestamp * 1000);
+      const today = new Date();
+      const sameDay = date.toDateString() === today.toDateString();
+      const hhmm = new Intl.DateTimeFormat('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(date);
+      if (sameDay) return `今天 ${hhmm}`;
+      return new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(date).replace(/\//g, '-');
+    }
+
+    function healthClass(status) {
+      if (status === 'connected') return 'ok';
+      if (status === 'failed') return 'danger';
+      return 'warn';
+    }
+
+    function healthLabel(status) {
+      if (status === 'connected') return '已连接';
+      if (status === 'failed') return '连接失败';
+      return '未检测';
+    }
+
+    function statusLabel(status) {
+      if (status === 'success') return '成功';
+      if (status === 'failed') return '失败';
+      if (status === 'running') return '运行中';
+      return status || '-';
+    }
+
+    function triggerLabel(trigger) {
+      if (trigger === 'manual_sync') return '手动同步';
+      if (trigger === 'manual_rescan') return '手动扫描';
+      if (trigger === 'watcher') return '文件变化';
+      return trigger || '-';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[char]));
+    }
+
+    async function api(path, options = {}) {
+      const init = { ...options };
+      if (init.body && typeof init.body !== 'string') {
+        init.headers = { 'Content-Type': 'application/json', ...(init.headers || {}) };
+        init.body = JSON.stringify(init.body);
+      }
+      const response = await fetch(path, init);
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text.trim() || `${response.status} ${response.statusText}`);
+      }
+      if (!text) return null;
+      return JSON.parse(text);
+    }
+
+    function toast(message) {
+      const el = $('toast');
+      el.textContent = message;
+      el.classList.add('show');
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => el.classList.remove('show'), 3200);
+    }
+
+    function setBusy(value) {
+      state.busy = value;
+      document.querySelectorAll('button').forEach((button) => {
+        if (button.id !== 'refreshBtn') button.disabled = value;
+      });
+    }
+
+    async function refresh() {
+      try {
+        const [status, nodes, tasks, logs] = await Promise.all([
+          api('/v1/status'),
+          api('/v1/nodes'),
+          api('/v1/tasks'),
+          api('/v1/logs?limit=20'),
+        ]);
+        state.status = status;
+        state.nodes = nodes;
+        state.tasks = tasks;
+        state.logs = logs.runs || [];
+        await refreshWatchState();
+        render();
+      } catch (error) {
+        toast(`加载失败：${error.message}`);
+      }
+    }
+
+    async function refreshWatchState() {
+      const pairs = await Promise.all(state.tasks.map(async (task) => {
+        try {
+          await api(`/v1/tasks/${task.id}/watch`);
+          return [task.id, true];
+        } catch (_) {
+          return [task.id, false];
+        }
+      }));
+      state.watched = new Set(pairs.filter(([, watched]) => watched).map(([id]) => id));
+    }
+
+    function render() {
+      renderStatus();
+      renderNodes();
+      renderTasks();
+      renderLogs();
+      renderTaskNodeOptions();
+    }
+
+    function renderStatus() {
+      const status = state.status;
+      const connected = state.nodes.filter((node) => node.health_status === 'connected').length;
+      const failed = state.nodes.filter((node) => node.health_status === 'failed').length;
+      const items = [
+        ['本机节点', shortId(status?.node_id)],
+        ['已连节点', `${status?.enabled_nodes ?? 0}`],
+        ['可连接', `${connected}`],
+        ['异常', `${failed}`],
+        ['最近同步', formatTime(status?.last_sync_at, '暂无')],
+      ];
+      $('statusStrip').innerHTML = items.map(([label, value]) => `
+        <div class="metric">
+          <label>${label}</label>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join('');
+    }
+
+    function renderNodes() {
+      $('nodeCount').textContent = `${state.nodes.length} 个`;
+      if (!state.nodes.length) {
+        $('nodeList').innerHTML = '<div class="empty">暂无节点</div>';
+        return;
+      }
+      $('nodeList').innerHTML = state.nodes.map((node) => {
+        const health = healthClass(node.health_status);
+        return `
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title">
+                <span class="dot ${health}"></span>
+                <span>${escapeHtml(node.name)}</span>
+                <span class="subtle">${shortId(node.id)}</span>
+              </div>
+              <div class="actions">
+                <span class="pill"><span class="dot ${health}"></span>${healthLabel(node.health_status)}</span>
+                <button class="danger" data-action="delete-node" data-id="${node.id}" title="删除节点"><span>×</span><span>删除</span></button>
+              </div>
+            </div>
+            <div class="row-meta">${escapeHtml(node.endpoint)}</div>
+            ${node.health_message ? `<div class="row-meta danger">${escapeHtml(node.health_message)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTaskNodeOptions() {
+      const select = $('targetNode');
+      const current = select.value;
+      select.innerHTML = state.nodes.map((node) => `
+        <option value="${node.id}">${escapeHtml(node.name)} · ${escapeHtml(node.endpoint)}</option>
+      `).join('');
+      if (state.nodes.some((node) => node.id === current)) select.value = current;
+    }
+
+    function renderTasks() {
+      $('taskCount').textContent = `${state.tasks.length} 个`;
+      if (!state.tasks.length) {
+        $('taskList').innerHTML = '<div class="empty">暂无任务</div>';
+        return;
+      }
+      $('taskList').innerHTML = state.tasks.map((task) => {
+        const node = state.nodes.find((item) => item.id === task.target_node_id);
+        const watched = state.watched.has(task.id);
+        const health = healthClass(node?.health_status);
+        return `
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title">
+                <span class="dot ${watched ? 'ok' : 'warn'}"></span>
+                <span>${escapeHtml(task.name)}</span>
+                <span class="subtle">${shortId(task.id)}</span>
+              </div>
+              <div class="actions">
+                <button class="primary" data-action="sync-task" data-id="${task.id}" title="立即同步"><span>▶</span><span>同步</span></button>
+                <button data-action="rescan-task" data-id="${task.id}" title="重新扫描"><span>↻</span><span>扫描</span></button>
+                ${watched
+                  ? `<button data-action="stop-watch" data-id="${task.id}" title="停止监听"><span>■</span><span>停止</span></button>`
+                  : `<button data-action="start-watch" data-id="${task.id}" title="启动监听"><span>●</span><span>监听</span></button>`}
+                <button class="danger" data-action="delete-task" data-id="${task.id}" title="删除任务"><span>×</span><span>删除</span></button>
+              </div>
+            </div>
+            <div class="row-meta">${escapeHtml(task.source_path)} → ${escapeHtml(task.target_path)}</div>
+            <div class="row-meta">
+              <span class="pill">${task.direction === 'two_way' ? '双向同步' : '单向同步'}</span>
+              <span class="pill">${escapeHtml(task.conflict_mode)}</span>
+              <span class="pill"><span class="dot ${health}"></span>${escapeHtml(node?.name || '未知节点')}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderLogs() {
+      $('logCount').textContent = `${state.logs.length} 条`;
+      if (!state.logs.length) {
+        $('logTable').innerHTML = '<div class="empty">暂无活动</div>';
+        return;
+      }
+      $('logTable').innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 20%">时间</th>
+              <th style="width: 18%">状态</th>
+              <th style="width: 18%">触发</th>
+              <th style="width: 15%">变更</th>
+              <th style="width: 15%">数据</th>
+              <th>错误</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.logs.map((run) => {
+              const cls = run.status === 'success' ? 'ok' : run.status === 'failed' ? 'danger' : 'warn';
+              return `
+                <tr>
+                  <td>${formatTime(run.finished_at, '进行中')}</td>
+                  <td class="${cls}">${statusLabel(run.status)}</td>
+                  <td>${triggerLabel(run.trigger_kind)}</td>
+                  <td>${run.files_changed}</td>
+                  <td>${formatBytes(run.bytes_sent)}</td>
+                  <td class="wrap danger">${escapeHtml(run.error_message || '')}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function withBusy(label, fn) {
+      setBusy(true);
+      try {
+        await fn();
+        toast(`${label}完成`);
+        await refresh();
+      } catch (error) {
+        toast(`${label}失败：${error.message}`);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    $('refreshBtn').addEventListener('click', refresh);
+    $('openApiBtn').addEventListener('click', () => window.open('/health', '_blank'));
+
+    $('nodeForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const publicKey = String(form.get('public_key') || '').trim();
+      await withBusy('添加节点', async () => {
+        await api('/v1/nodes', {
+          method: 'POST',
+          body: {
+            name: String(form.get('name')).trim(),
+            endpoint: String(form.get('endpoint')).trim(),
+            public_key: publicKey || null,
+          },
+        });
+        event.currentTarget.reset();
+      });
+    });
+
+    $('taskForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      await withBusy('添加任务', async () => {
+        await api('/v1/tasks', {
+          method: 'POST',
+          body: {
+            name: String(form.get('name')).trim(),
+            source_path: String(form.get('source_path')).trim(),
+            target_node_id: String(form.get('target_node_id')),
+            target_path: String(form.get('target_path')).trim(),
+            direction: String(form.get('direction')),
+            delete_mode: 'propagate',
+            conflict_mode: String(form.get('conflict_mode')),
+          },
+        });
+        event.currentTarget.reset();
+      });
+    });
+
+    document.body.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const action = button.dataset.action;
+      const id = button.dataset.id;
+      if (action === 'sync-task') {
+        await withBusy('同步', () => api(`/v1/tasks/${id}/sync`, { method: 'POST' }));
+      } else if (action === 'rescan-task') {
+        await withBusy('扫描', () => api(`/v1/tasks/${id}/rescan`, { method: 'POST' }));
+      } else if (action === 'start-watch') {
+        await withBusy('启动监听', () => api(`/v1/tasks/${id}/watch`, { method: 'POST' }));
+      } else if (action === 'stop-watch') {
+        await withBusy('停止监听', () => api(`/v1/tasks/${id}/watch`, { method: 'DELETE' }));
+      } else if (action === 'delete-task') {
+        if (confirm('删除这个同步任务？')) {
+          await withBusy('删除任务', () => api(`/v1/tasks/${id}`, { method: 'DELETE' }));
+        }
+      } else if (action === 'delete-node') {
+        if (confirm('删除这个节点？')) {
+          await withBusy('删除节点', () => api(`/v1/nodes/${id}`, { method: 'DELETE' }));
+        }
+      }
+    });
+
+    function connectEvents() {
+      const events = new EventSource('/v1/events');
+      events.addEventListener('sync_progress', () => refresh());
+      events.addEventListener('sync_run_completed', () => refresh());
+      events.addEventListener('task_updated', () => refresh());
+      events.addEventListener('watch_triggered', () => refresh());
+      events.onerror = () => {
+        events.close();
+        setTimeout(connectEvents, 3000);
+      };
+    }
+
+    refresh();
+    connectEvents();
+    setInterval(refresh, 8000);
+  </script>
+</body>
+</html>

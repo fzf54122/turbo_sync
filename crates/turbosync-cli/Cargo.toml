@@ -18,6 +18,7 @@ tokio.workspace = true
 turbosync-agent = { path = "../turbosync-agent" }
 turbosync-core = { path = "../turbosync-core" }
 turbosync-storage = { path = "../turbosync-storage" }
+turbosync-tui = { path = "../turbosync-tui" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

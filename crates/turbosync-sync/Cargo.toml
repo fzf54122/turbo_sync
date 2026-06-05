@@ -8,6 +8,8 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 blake3.workspace = true
+notify.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
 turbosync-core = { path = "../turbosync-core" }
 walkdir.workspace = true
 

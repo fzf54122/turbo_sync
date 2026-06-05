@@ -6,6 +6,7 @@ members = [
     "crates/turbosync-storage",
     "crates/turbosync-sync",
     "crates/turbosync-transport",
+    "crates/turbosync-tui",
 ]
 resolver = "2"
 
@@ -19,6 +20,7 @@ version = "0.1.0"
 anyhow = "1.0"
 axum = "0.7"
 blake3 = "1.5"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4.5", features = ["derive"] }
 directories = "6.0"
 notify = "6.1"
@@ -33,6 +35,13 @@ tokio = { version = "1.38", features = ["macros", "net", "rt-multi-thread", "sig
 toml = "0.8"
 tower-http = { version = "0.5", features = ["trace"] }
 tracing = "0.1"
+tokio-stream = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.8", features = ["v4", "serde"] }
 walkdir = "2.5"
+crossterm = "0.28"
+ratatui = "0.29"
+sha2 = "0.10"
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pki-types = "1.11"

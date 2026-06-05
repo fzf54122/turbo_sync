@@ -6,6 +6,18 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 quinn.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls-pki-types.workspace = true
 serde.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util"] }
+tracing.workspace = true
 turbosync-core = { path = "../turbosync-core" }
+turbosync-sync = { path = "../turbosync-sync" }
+uuid.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+tempfile.workspace = true

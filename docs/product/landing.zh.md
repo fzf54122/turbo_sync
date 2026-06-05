@@ -99,6 +99,7 @@ TurboSync 第一阶段只做文件同步最核心的闭环。
 - Notify：文件监听
 - Blake3：文件指纹
 - Quinn：QUIC 传输
+- Ratatui + Crossterm：终端仪表盘
 - Tracing：日志
 
 不自研 QUIC、不自研数据库、不自研文件监听。
@@ -128,15 +129,15 @@ TurboSync 不是企业级平台起步。
 TurboSync 使用本地 Agent 运行同步任务。
 
 ```text
-CLI
+CLI / TUI Dashboard
  ↓
 Local Agent
  ↓
-File Watcher
+File Watcher (notify, 500ms debounce)
  ↓
-Sync Engine
+Sync Engine (本地 / 远端路由)
  ↓
-Remote Agent
+Remote Agent (QUIC)
 ```
 
 当源目录发生变化：
@@ -166,13 +167,13 @@ Remote Agent
 - Agent 本地控制 API
 - CLI 连接本地 Agent 管理节点和任务
 - 文件扫描和 SQLite 索引
-- 本地手动同步
+- 本地和远端同步（QUIC 传输）
+- 文件监听 + 500ms 防抖
+- CLI watch 子命令
+- 终端仪表盘 (`tsync dashboard`)
 - 同步日志
 
-下一步：
-
-- 文件监听和防抖触发
-- Agent-to-Agent 文件传输
+第一阶段 MVP 闭环已完成。下一阶段：GUI 客户端。
 
 ## 一句话介绍
 
