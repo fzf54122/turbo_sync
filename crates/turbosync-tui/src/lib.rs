@@ -1308,8 +1308,7 @@ fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
         })
         .split(area);
 
-    let footer_area = if app.progress.is_some() {
-        let progress = app.progress.as_ref().unwrap();
+    let footer_area = if let Some(progress) = &app.progress {
         let ratio = if progress.total > 0 {
             progress.current as f64 / progress.total as f64
         } else {

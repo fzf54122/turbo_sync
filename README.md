@@ -101,7 +101,7 @@ tsync dashboard
 
 ### 2. 打开桌面 GUI
 
-桌面端是独立二进制 `tsync-gui`，连接本机 Agent API，不使用 Electron 或 WebView。
+桌面端中文名是 **飞梭同步**，英文名继续使用 TurboSync。它是独立二进制 `tsync-gui`，连接本机 Agent API，不使用 Electron 或 WebView。
 
 ```bash
 make gui
@@ -113,7 +113,11 @@ make gui
 cargo run --manifest-path crates/turbosync-gui/Cargo.toml
 ```
 
-GUI 支持添加节点、添加任务、手动同步、扫描、监听开关、删除任务/节点、查看最近活动。双方机器仍然都需要启动 Agent；GUI 只是本机控制入口。
+GUI 启动时会自动初始化并启动本机 Agent；如果这个 Agent 是 GUI 自己启动的，关闭 GUI 时会自动关闭它。如果本机 Agent 原本已经在运行，GUI 只会连接使用，不会在退出时关闭它。
+
+GUI 支持添加节点、添加任务、手动同步、扫描、监听开关、删除任务/节点、查看最近活动。双方机器仍然都需要有 Agent；本机由 GUI 自动处理，远端机器需要运行对应的 `turbosync-agent` 或 `tsync agent run`。
+
+源码开发时推荐使用 `make gui`，它会先构建本机 Agent 和 CLI，确保 GUI 能启动并接管本机同步服务。
 
 ## 🧭 常用命令
 

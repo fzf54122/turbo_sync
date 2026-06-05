@@ -1,8 +1,14 @@
-use std::{rc::Rc, thread};
+use std::{
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
+    rc::Rc,
+    thread,
+    time::Duration,
+};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use slint::{Model, ModelRc, VecModel};
+use slint::{CloseRequestResponse, ComponentHandle, Model, ModelRc, VecModel};
 use turbosync_core::{
     config,
     display::{format_bytes, format_unix_time},
@@ -105,6 +111,19 @@ slint::slint! {
             font-weight: primary ? 700 : 500;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+
+    component WindowDot inherits Rectangle {
+        in property <color> dot_color;
+        callback clicked();
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: root.dot_color;
+
+        TouchArea {
+            clicked => { root.clicked(); }
         }
     }
 
@@ -234,7 +253,7 @@ slint::slint! {
     }
 
     export component MainWindow inherits Window {
-        title: "TurboSync";
+        title: "飞梭同步 TurboSync";
         width: 1180px;
         height: 760px;
         background: #F5F5F7;
@@ -275,6 +294,27 @@ slint::slint! {
         callback stop_watch(string);
         callback remove_task(string);
         callback remove_node(string);
+        callback minimize_window();
+        callback toggle_maximize_window();
+        callback close_window();
+
+        MenuBar {
+            Menu {
+                title: "飞梭同步";
+                MenuItem { title: "刷新"; activated => { root.refresh(); } }
+                MenuItem { title: "同步选中任务"; enabled: !root.busy && root.selected_task_id != ""; activated => { root.sync_task(root.selected_task_id); } }
+                MenuSeparator { }
+                MenuItem { title: "最小化"; activated => { root.minimize_window(); } }
+                MenuItem { title: "最大化/还原"; activated => { root.toggle_maximize_window(); } }
+                MenuItem { title: "退出"; activated => { root.close_window(); } }
+            }
+            Menu {
+                title: "任务";
+                MenuItem { title: "启动监听"; enabled: !root.busy && root.selected_task_id != ""; activated => { root.start_watch(root.selected_task_id); } }
+                MenuItem { title: "停止监听"; enabled: !root.busy && root.selected_task_id != ""; activated => { root.stop_watch(root.selected_task_id); } }
+                MenuItem { title: "重新扫描"; enabled: !root.busy && root.selected_task_id != ""; activated => { root.rescan_task(root.selected_task_id); } }
+            }
+        }
 
         VerticalLayout {
             spacing: 0px;
@@ -284,14 +324,20 @@ slint::slint! {
                 padding-right: 18px;
                 height: 48px;
                 spacing: 14px;
-                Rectangle { width: 12px; height: 12px; border-radius: 6px; background: #FF5F57; }
-                Rectangle { width: 12px; height: 12px; border-radius: 6px; background: #FFBD2E; }
-                Rectangle { width: 12px; height: 12px; border-radius: 6px; background: #28C840; }
+                WindowDot { dot_color: #FF5F57; clicked => { root.close_window(); } }
+                WindowDot { dot_color: #FFBD2E; clicked => { root.minimize_window(); } }
+                WindowDot { dot_color: #28C840; clicked => { root.toggle_maximize_window(); } }
+                Image {
+                    source: @image-url("../assets/feisuo-mascot.svg");
+                    width: 30px;
+                    height: 30px;
+                    image-fit: contain;
+                }
                 VerticalLayout {
-                    width: 220px;
+                    width: 228px;
                     spacing: 2px;
-                    Text { text: "TurboSync"; font-size: 17px; font-weight: 800; color: #1D1D1F; }
-                    Text { text: "Desktop Sync Console"; color: #8E8E93; font-size: 11px; }
+                    Text { text: "飞梭同步"; font-size: 17px; font-weight: 800; color: #1D1D1F; }
+                    Text { text: "TurboSync 桌面控制台"; color: #8E8E93; font-size: 11px; }
                 }
                 MenuButton { text: "总览"; primary: true; width: 72px; }
                 MenuButton { text: "刷新"; width: 72px; enabled: !root.busy; clicked => { root.refresh(); } }
@@ -451,14 +497,196 @@ struct Snapshot {
     watched: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct AgentCommandSpec {
+    program: PathBuf,
+    args: Vec<String>,
+    current_dir: Option<PathBuf>,
+}
+
 fn main() -> Result<()> {
+    let mut auto_agent = run_async(ensure_local_agent_running()).context(
+        "无法启动本机同步服务，请确认 tsync 或 turbosync-agent 可执行文件在 GUI 同目录或 PATH 中",
+    )?;
     let window = MainWindow::new().context("failed to create GUI window")?;
     wire_callbacks(&window);
     refresh_async(window.as_weak());
-    window.run().context("failed to run GUI")
+    let run_result = window.run().context("failed to run GUI");
+    if let Some(child) = auto_agent.as_mut() {
+        stop_auto_started_agent(child);
+    }
+    run_result
+}
+
+async fn ensure_local_agent_running() -> Result<Option<Child>> {
+    if let Ok(client) = AgentClient::from_config() {
+        if client.health_check().await.is_ok() {
+            return Ok(None);
+        }
+    }
+
+    let paths = config::resolve_paths()?;
+    if !paths.config_file.exists() {
+        config::init_config_at(&paths)?;
+    }
+
+    let specs = agent_command_specs()?;
+    let mut last_error = None;
+
+    for spec in specs {
+        match spawn_agent(&spec) {
+            Ok(mut child) => {
+                for _ in 0..50 {
+                    if let Ok(client) = AgentClient::from_config() {
+                        if client.health_check().await.is_ok() {
+                            return Ok(Some(child));
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(120)).await;
+                }
+
+                let _ = child.kill();
+                let _ = child.wait();
+                last_error = Some(format!("{} 启动后未就绪", command_label(&spec)));
+            }
+            Err(error) => {
+                last_error = Some(format!("{} 启动失败：{error}", command_label(&spec)));
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "{}",
+        last_error.unwrap_or_else(|| "没有找到可用的本机同步服务启动命令".to_owned())
+    );
+}
+
+fn spawn_agent(spec: &AgentCommandSpec) -> Result<Child> {
+    let mut command = Command::new(&spec.program);
+    command
+        .args(&spec.args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    if let Some(current_dir) = &spec.current_dir {
+        command.current_dir(current_dir);
+    }
+
+    command.spawn().with_context(|| command_label(spec))
+}
+
+fn stop_auto_started_agent(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn agent_command_specs() -> Result<Vec<AgentCommandSpec>> {
+    let current_exe = std::env::current_exe().context("无法定位当前 GUI 可执行文件")?;
+    let exe_dir = current_exe
+        .parent()
+        .context("当前 GUI 可执行文件没有父目录")?;
+    let mut specs = Vec::new();
+
+    push_sibling_agent_specs(&mut specs, exe_dir);
+    if let Some(repo_root) = find_repo_root(&current_exe) {
+        push_repo_agent_specs(&mut specs, &repo_root);
+    }
+    push_path_agent_specs(&mut specs);
+
+    Ok(specs)
+}
+
+fn push_sibling_agent_specs(specs: &mut Vec<AgentCommandSpec>, exe_dir: &Path) {
+    specs.push(AgentCommandSpec {
+        program: exe_dir.join(exe_name("turbosync-agent")),
+        args: Vec::new(),
+        current_dir: None,
+    });
+    specs.push(AgentCommandSpec {
+        program: exe_dir.join(exe_name("tsync")),
+        args: vec!["agent".into(), "run".into()],
+        current_dir: None,
+    });
+}
+
+fn push_repo_agent_specs(specs: &mut Vec<AgentCommandSpec>, repo_root: &Path) {
+    for profile in ["debug", "release"] {
+        let bin_dir = repo_root.join("target").join(profile);
+        specs.push(AgentCommandSpec {
+            program: bin_dir.join(exe_name("turbosync-agent")),
+            args: Vec::new(),
+            current_dir: None,
+        });
+        specs.push(AgentCommandSpec {
+            program: bin_dir.join(exe_name("tsync")),
+            args: vec!["agent".into(), "run".into()],
+            current_dir: None,
+        });
+    }
+}
+
+fn push_path_agent_specs(specs: &mut Vec<AgentCommandSpec>) {
+    specs.push(AgentCommandSpec {
+        program: PathBuf::from(exe_name("turbosync-agent")),
+        args: Vec::new(),
+        current_dir: None,
+    });
+    specs.push(AgentCommandSpec {
+        program: PathBuf::from(exe_name("tsync")),
+        args: vec!["agent".into(), "run".into()],
+        current_dir: None,
+    });
+}
+
+fn exe_name(name: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_owned()
+    }
+}
+
+fn find_repo_root(start: &Path) -> Option<PathBuf> {
+    for ancestor in start.ancestors() {
+        if ancestor.join("crates/turbosync-cli").is_dir() && ancestor.join("Cargo.toml").is_file() {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
+}
+
+fn command_label(spec: &AgentCommandSpec) -> String {
+    let mut parts = vec![spec.program.display().to_string()];
+    parts.extend(spec.args.iter().cloned());
+    parts.join(" ")
 }
 
 fn wire_callbacks(window: &MainWindow) {
+    let weak = window.as_weak();
+    window.on_minimize_window(move || {
+        if let Some(window) = weak.upgrade() {
+            window.window().set_minimized(true);
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_toggle_maximize_window(move || {
+        if let Some(window) = weak.upgrade() {
+            let app_window = window.window();
+            app_window.set_maximized(!app_window.is_maximized());
+        }
+    });
+
+    window.on_close_window(move || {
+        let _ = slint::quit_event_loop();
+    });
+
+    window.window().on_close_requested(|| {
+        let _ = slint::quit_event_loop();
+        CloseRequestResponse::HideWindow
+    });
+
     let weak = window.as_weak();
     window.on_refresh(move || refresh_async(weak.clone()));
 
@@ -838,6 +1066,16 @@ impl AgentClient {
             .await
             .context("agent 未启动，请先运行 tsync agent run")?;
         self.expect_json(response).await
+    }
+
+    async fn health_check(&self) -> Result<()> {
+        let response = self
+            .client
+            .get(self.url("/health"))
+            .send()
+            .await
+            .context("本机同步服务未启动")?;
+        self.expect_status(response).await
     }
 
     async fn post_json<T: serde::Serialize, U: serde::de::DeserializeOwned>(

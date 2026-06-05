@@ -55,6 +55,7 @@ release-gui:
 	cargo build --release --manifest-path crates/turbosync-gui/Cargo.toml
 
 gui:
+	cargo build -p turbosync-agent -p turbosync-cli
 	cargo run --manifest-path crates/turbosync-gui/Cargo.toml
 
 clean:
