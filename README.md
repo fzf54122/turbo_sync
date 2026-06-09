@@ -334,6 +334,6 @@ MIT
 
 <div align="center">
 
-📧 zhanfei.feng@macrocura.com
+📧 fzf54122@163.com
 
 </div>
