@@ -89,7 +89,11 @@ jobs:
             rust:1-buster \
             bash -lc '
               set -euo pipefail
-              apt-get update
+              cat > /etc/apt/sources.list <<'APT'
+              deb http://archive.debian.org/debian buster main
+              deb http://archive.debian.org/debian-security buster/updates main
+              APT
+              apt-get -o Acquire::Check-Valid-Until=false update
               apt-get install -y --no-install-recommends \
                 build-essential \
                 ca-certificates \
