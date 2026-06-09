@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { AgentReadyResponse, StatusResponse } from '../types/turbosync';
-import { formatUnixTime, shortId } from '../lib/format';
+import { shortId } from '../lib/format';
 import { StatusBadge } from './StatusBadge';
 
 interface AppShellProps {
@@ -15,6 +15,9 @@ interface AppShellProps {
 }
 
 export function AppShell({ status, agent, busy, error, theme, onRefresh, onToggleTheme, children }: AppShellProps) {
+  const agentLabel = agent ? (agent.started ? 'Agent 已启动' : 'Agent 已连接') : 'Agent 连接中';
+  const agentTone = agent ? 'green' : 'amber';
+
   return (
     <main className={`app-root theme-${theme}`}>
       <div className="app-atmosphere" />
@@ -32,8 +35,7 @@ export function AppShell({ status, agent, busy, error, theme, onRefresh, onToggl
             </div>
 
             <div className="toolbar-cluster">
-              <StatusBadge label={agent?.started ? '本机 Agent 已启动' : '等待本机 Agent'} tone={agent?.started ? 'green' : 'amber'} />
-              <span className="last-sync-pill">最近同步 {formatUnixTime(status?.last_sync_at, '暂无记录')}</span>
+              <StatusBadge label={agentLabel} tone={agentTone} />
               <button className="toolbar-button" disabled={busy} onClick={onRefresh} type="button">
                 {busy ? '处理中' : '刷新'}
               </button>

@@ -1,5 +1,5 @@
 import type { Node } from '../types/turbosync';
-import { healthLabel, shortId } from '../lib/format';
+import { formatUnixTime, healthLabel, shortId } from '../lib/format';
 import { EmptyState } from './EmptyState';
 import { StatusBadge } from './StatusBadge';
 
@@ -15,6 +15,15 @@ function healthTone(status: string) {
   if (status === 'connected') return 'green';
   if (status === 'failed') return 'red';
   return 'amber';
+}
+
+function healthDetail(node: Node) {
+  if (node.health_message) return node.health_message;
+  if (node.health_status === 'connected') {
+    return node.last_checked_at ? `最近检查 ${formatUnixTime(node.last_checked_at)}` : '连接正常';
+  }
+  if (node.health_status === 'failed') return '连接失败';
+  return '等待健康检查';
 }
 
 export function NodePanel({ nodes, selectedNodeId, busy, onSelect, onRemove }: NodePanelProps) {
@@ -48,7 +57,7 @@ export function NodePanel({ nodes, selectedNodeId, busy, onSelect, onRemove }: N
               </div>
               <div className="node-meta">
                 <span>ID {shortId(node.id)}</span>
-                <span>{node.health_message ?? '等待健康检查'}</span>
+                <span>{healthDetail(node)}</span>
               </div>
               <div className="mt-3 flex justify-end">
                 <span

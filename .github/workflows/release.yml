@@ -152,7 +152,7 @@ jobs:
            Includes the tsync CLI, turbosync-agent service, and Tauri desktop GUI.
           EOF
 
-          dpkg-deb --build "${ROOT}" "dist/${PACKAGE}.deb"
+          dpkg-deb --root-owner-group -Zxz --build "${ROOT}" "dist/${PACKAGE}.deb"
 
       - name: Archive macOS package
         if: runner.os == 'macOS'

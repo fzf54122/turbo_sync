@@ -130,12 +130,15 @@ pub async fn run_foreground() -> Result<()> {
     let agent_addr_for_health = config.agent_addr.clone();
     let transport_addr_for_health = config.transport_addr.clone();
     tokio::spawn(async move {
-        refresh_node_health(
-            &pool_for_health,
-            &agent_addr_for_health,
-            &transport_addr_for_health,
-        )
-        .await;
+        loop {
+            refresh_node_health(
+                &pool_for_health,
+                &agent_addr_for_health,
+                &transport_addr_for_health,
+            )
+            .await;
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        }
     });
 
     println!("TurboSync agent listening on http://{addr}");
@@ -675,8 +678,28 @@ async fn execute_two_way_sync(
         .ok_or_else(|| anyhow::anyhow!("target node not found: {}", task.target_node_id))?;
     let fingerprint = node.public_key.as_deref();
 
-    let remote_index_json =
-        turbosync_transport::request_file_index(&node.endpoint, &task.id, fingerprint).await?;
+    let remote_index_json = match turbosync_transport::request_file_index(
+        &node.endpoint,
+        &task.id,
+        fingerprint,
+    )
+    .await
+    {
+        Ok(remote_index_json) => {
+            turbosync_storage::update_node_health(pool, &node.id, "connected", None).await?;
+            remote_index_json
+        }
+        Err(error) => {
+            turbosync_storage::update_node_health(
+                pool,
+                &node.id,
+                "failed",
+                Some(&short_error_message(&error)),
+            )
+            .await?;
+            return Err(error);
+        }
+    };
     let remote_index: Vec<FileIndexEntry> =
         serde_json::from_slice(&remote_index_json).context("failed to decode remote file index")?;
 
@@ -707,24 +730,53 @@ async fn execute_two_way_sync(
     }
 
     // Pull files from remote.
-    let pull_summary = turbosync_transport::pull_files(
+    let pull_summary = match turbosync_transport::pull_files(
         &node.endpoint,
         &task.id,
         &remote_pull_ops,
         &PathBuf::from(&task.source_path),
         fingerprint,
     )
-    .await?;
+    .await
+    {
+        Ok(summary) => summary,
+        Err(error) => {
+            turbosync_storage::update_node_health(
+                pool,
+                &node.id,
+                "failed",
+                Some(&short_error_message(&error)),
+            )
+            .await?;
+            return Err(error);
+        }
+    };
 
     // Push local files to remote.
-    let push_summary = turbosync_transport::transfer_files(
+    let push_summary = match turbosync_transport::transfer_files(
         &node.endpoint,
         &PathBuf::from(&task.target_path),
         &local_push_ops,
         &PathBuf::from(&task.source_path),
         fingerprint,
     )
-    .await?;
+    .await
+    {
+        Ok(summary) => {
+            turbosync_storage::update_node_health(pool, &node.id, "connected", None).await?;
+            summary
+        }
+        Err(error) => {
+            turbosync_storage::update_node_health(
+                pool,
+                &node.id,
+                "failed",
+                Some(&short_error_message(&error)),
+            )
+            .await?;
+            return Err(error);
+        }
+    };
 
     let files_failed = (pull_summary.failed + push_summary.failed) as i64;
     let bytes_sent = push_summary.bytes_sent as i64;
@@ -1032,14 +1084,30 @@ async fn apply_remotely_and_record(
         .ok_or_else(|| anyhow::anyhow!("target node not found: {}", task.target_node_id))?;
 
     let fingerprint = node.public_key.as_deref();
-    let summary = turbosync_transport::transfer_files(
+    let summary = match turbosync_transport::transfer_files(
         &node.endpoint,
         &PathBuf::from(&task.target_path),
         operations,
         &PathBuf::from(&task.source_path),
         fingerprint,
     )
-    .await?;
+    .await
+    {
+        Ok(summary) => {
+            turbosync_storage::update_node_health(pool, &node.id, "connected", None).await?;
+            summary
+        }
+        Err(error) => {
+            turbosync_storage::update_node_health(
+                pool,
+                &node.id,
+                "failed",
+                Some(&short_error_message(&error)),
+            )
+            .await?;
+            return Err(error);
+        }
+    };
 
     let mut synced: Vec<String> = Vec::new();
     let mut recorded: Vec<SyncOperation> = Vec::new();

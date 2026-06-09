@@ -59,8 +59,23 @@ pub fn run() {
             "toggle_theme" => {
                 let _ = event.window().emit("menu://toggle-theme", ());
             }
-            "about" => {
+            "show_about" => {
                 let _ = event.window().emit("menu://about", ());
+            }
+            "add_node" => {
+                let _ = event.window().emit("menu://add-node", ());
+            }
+            "add_task" => {
+                let _ = event.window().emit("menu://add-task", ());
+            }
+            "sync_selected" => {
+                let _ = event.window().emit("menu://sync-selected", ());
+            }
+            "watch_selected" => {
+                let _ = event.window().emit("menu://watch-selected", ());
+            }
+            "stop_watch_selected" => {
+                let _ = event.window().emit("menu://stop-watch-selected", ());
             }
             "minimize" => {
                 let _ = event.window().minimize();
@@ -106,17 +121,16 @@ fn app_menu() -> Menu {
         .add_item(CustomMenuItem::new("refresh", "刷新状态").accelerator("CmdOrCtrl+R"))
         .add_item(CustomMenuItem::new("toggle_theme", "切换主题").accelerator("CmdOrCtrl+T"))
         .add_native_item(MenuItem::Separator)
-        .add_item(CustomMenuItem::new("about", "关于飞梭同步"));
+        .add_item(CustomMenuItem::new("show_about", "关于飞梭同步"));
 
     let sync_menu = Menu::new()
+        .add_item(CustomMenuItem::new("add_task", "创建同步路线"))
+        .add_native_item(MenuItem::Separator)
         .add_item(CustomMenuItem::new("sync_selected", "同步选中任务"))
-        .add_item(CustomMenuItem::new("rescan_selected", "重新扫描"))
-        .add_item(CustomMenuItem::new("watch_selected", "开启监听"));
+        .add_item(CustomMenuItem::new("watch_selected", "开启监听"))
+        .add_item(CustomMenuItem::new("stop_watch_selected", "停止监听"));
 
-    let node_menu = Menu::new()
-        .add_item(CustomMenuItem::new("add_node", "添加节点"))
-        .add_item(CustomMenuItem::new("health_check", "检查节点健康"))
-        .add_item(CustomMenuItem::new("cert_help", "证书指纹说明"));
+    let node_menu = Menu::new().add_item(CustomMenuItem::new("add_node", "添加设备"));
 
     let window_menu = Menu::new()
         .add_item(CustomMenuItem::new("minimize", "最小化").accelerator("CmdOrCtrl+M"))
@@ -124,17 +138,11 @@ fn app_menu() -> Menu {
         .add_native_item(MenuItem::Separator)
         .add_item(CustomMenuItem::new("close", "关闭窗口").accelerator("CmdOrCtrl+Q"));
 
-    let help_menu = Menu::new()
-        .add_item(CustomMenuItem::new("quick_start", "快速开始"))
-        .add_item(CustomMenuItem::new("self_test", "自测流程"))
-        .add_item(CustomMenuItem::new("issue", "反馈问题"));
-
     Menu::new()
         .add_submenu(Submenu::new("应用", app_menu))
         .add_submenu(Submenu::new("同步", sync_menu))
         .add_submenu(Submenu::new("节点", node_menu))
         .add_submenu(Submenu::new("窗口", window_menu))
-        .add_submenu(Submenu::new("帮助", help_menu))
 }
 
 #[tauri::command]

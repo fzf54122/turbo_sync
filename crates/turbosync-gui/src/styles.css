@@ -84,12 +84,12 @@ button:disabled {
 
 @layer components {
   .app-header {
-    z-index: 10;
+    position: relative;
+    z-index: 20;
     flex-shrink: 0;
     border-bottom: 1px solid var(--app-border);
-    background: color-mix(in srgb, var(--app-panel-strong) 82%, transparent);
-    padding: 0.9rem 1.5rem;
-    backdrop-filter: blur(18px);
+    background: var(--app-panel-strong);
+    padding: 0.72rem 1.35rem;
   }
 
   .app-header-inner,
@@ -100,6 +100,7 @@ button:disabled {
 
   .app-header-inner {
     display: flex;
+    min-width: 0;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
@@ -118,8 +119,8 @@ button:disabled {
 
   .brand-mark {
     display: flex;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 2.45rem;
+    height: 2.45rem;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
@@ -149,8 +150,12 @@ button:disabled {
   }
 
   .toolbar-cluster {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
     flex-wrap: wrap;
     justify-content: flex-end;
+    gap: 0.5rem;
   }
 
   .last-sync-pill,
@@ -195,7 +200,9 @@ button:disabled {
     min-height: 0;
     flex: 1;
     overflow: auto;
-    padding: clamp(1.15rem, 1vw + 0.8rem, 2rem);
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding: clamp(1rem, 0.9vw + 0.75rem, 1.7rem);
   }
 
   .home-layout {
@@ -248,33 +255,39 @@ button:disabled {
     border-radius: 1.55rem;
   }
 
+  .form-panel {
+    scroll-margin-top: 1rem;
+    animation: form-slide-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+  }
+
   .hero-panel {
     display: flex;
-    min-height: 17rem;
+    min-height: 13.5rem;
     flex-direction: column;
     justify-content: space-between;
-    gap: 1.75rem;
+    gap: 1.25rem;
     border-radius: 1.8rem;
-    padding: clamp(1.35rem, 2vw, 2.25rem);
+    padding: clamp(1.25rem, 1.6vw, 1.9rem);
   }
 
   .hero-title {
-    margin-top: 0.75rem;
-    max-width: 13em;
+    margin-top: 0.65rem;
+    max-width: 12em;
     color: var(--app-text);
-    font-size: clamp(2rem, 2.45vw, 3.35rem);
+    font-size: clamp(2.05rem, 2.05vw, 2.85rem);
     font-weight: 950;
-    letter-spacing: -0.065em;
-    line-height: 1.08;
+    letter-spacing: -0.06em;
+    line-height: 1.06;
   }
 
   .hero-copy {
-    margin-top: 1rem;
-    max-width: 42rem;
+    margin-top: 0.85rem;
+    max-width: 32rem;
     color: var(--app-muted);
-    font-size: clamp(0.95rem, 0.25vw + 0.88rem, 1.08rem);
-    font-weight: 650;
-    line-height: 1.8;
+    font-size: clamp(0.95rem, 0.2vw + 0.88rem, 1rem);
+    font-weight: 720;
+    line-height: 1.65;
   }
 
   .hero-actions {
@@ -284,9 +297,12 @@ button:disabled {
   }
 
   .guide-card {
-    min-height: 8.6rem;
-    border-radius: 1.45rem;
-    padding: 1.2rem;
+    display: flex;
+    min-height: 4.4rem;
+    align-items: center;
+    gap: 0.8rem;
+    border-radius: 1.25rem;
+    padding: 0.85rem 1rem;
   }
 
   .guide-card span {
@@ -302,19 +318,9 @@ button:disabled {
   }
 
   .guide-card strong {
-    display: block;
-    margin-top: 0.85rem;
     color: var(--app-text);
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 950;
-  }
-
-  .guide-card p {
-    margin-top: 0.45rem;
-    color: var(--app-muted);
-    font-size: 0.88rem;
-    font-weight: 600;
-    line-height: 1.6;
   }
 
   .guide-card.is-done span {
@@ -361,7 +367,7 @@ button:disabled {
   }
 
   .route-panel-featured {
-    min-height: 17rem;
+    min-height: 13.5rem;
   }
 
   .route-map {
@@ -412,6 +418,10 @@ button:disabled {
 
   .route-empty {
     margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
     border-radius: 1.15rem;
     border: 1px dashed var(--app-border);
     background: var(--app-panel-strong);
@@ -467,6 +477,121 @@ button:disabled {
   .field:focus {
     border-color: var(--app-accent);
     box-shadow: 0 0 0 4px var(--app-focus);
+  }
+
+  .select-field {
+    width: 100%;
+    color: var(--app-text);
+  }
+
+  .node-picker {
+    border: 0;
+    padding: 0;
+  }
+
+  .node-picker legend {
+    margin-bottom: 0.55rem;
+    color: var(--app-muted);
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+
+  .node-picker-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 0.65rem;
+  }
+
+  .node-picker-option {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    border-radius: 1rem;
+    border: 1px solid var(--app-border);
+    background: var(--app-panel-strong);
+    padding: 0.85rem 0.95rem;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  }
+
+  .node-picker-option:hover,
+  .node-picker-option:focus-visible,
+  .node-picker-option:has(input:focus-visible),
+  .node-picker-option.is-selected {
+    border-color: var(--app-accent);
+    background: color-mix(in srgb, var(--app-panel-strong) 88%, var(--app-accent) 12%);
+    box-shadow: 0 0 0 4px var(--app-focus);
+    outline: none;
+  }
+
+  .node-picker-main,
+  .node-picker-meta {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.22rem;
+  }
+
+  .node-picker-main strong {
+    overflow: hidden;
+    color: var(--app-text);
+    font-size: 0.92rem;
+    font-weight: 950;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .node-picker-main span,
+  .node-picker-meta span:first-child,
+  .node-picker-empty {
+    color: var(--app-muted);
+    font-size: 0.78rem;
+    font-weight: 750;
+  }
+
+  .node-picker-meta {
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  .node-picker-empty {
+    border: 1px dashed var(--app-border);
+    border-radius: 1rem;
+    background: var(--app-panel-strong);
+    padding: 0.95rem;
+  }
+
+  .about-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 20, 43, 0.28);
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+  }
+
+  .about-dialog {
+    width: min(100%, 24rem);
+    border-radius: 1.5rem;
+    border: 1px solid var(--app-border);
+    background: var(--app-panel-strong);
+    box-shadow: var(--app-shadow);
+    padding: 1.35rem;
+    animation: form-slide-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .about-dialog p:not(.section-kicker) {
+    margin: 0.85rem 0 1.1rem;
+    color: var(--app-muted);
+    font-size: 0.92rem;
+    font-weight: 650;
+    line-height: 1.65;
   }
 
   .primary-button {
@@ -553,6 +678,9 @@ button:disabled {
   .activity-card {
     border: 1px solid var(--app-border);
     background: var(--app-panel-strong);
+    contain: layout paint;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 7.5rem;
     transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
   }
 
@@ -620,6 +748,12 @@ button:disabled {
     font-size: 0.8rem;
   }
 
+  .task-run {
+    margin-top: 0.45rem;
+    color: var(--app-text);
+    font-size: 0.8rem;
+  }
+
   .task-id,
   .activity-head time {
     flex-shrink: 0;
@@ -677,6 +811,13 @@ button:disabled {
     font-size: 0.86rem;
   }
 
+  .activity-more {
+    color: var(--app-subtle);
+    font-size: 0.78rem;
+    font-weight: 750;
+    text-align: center;
+  }
+
   .activity-error {
     color: #be123c !important;
     font-size: 0.78rem !important;
@@ -717,6 +858,30 @@ button:disabled {
   }
 }
 
+@keyframes form-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.55rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .app-content {
+    scroll-behavior: auto;
+  }
+
+  .form-panel,
+  .about-dialog {
+    animation: none;
+  }
+}
+
 .theme-dark .status-badge-green {
   color: #86efac;
 }
@@ -749,6 +914,26 @@ button:disabled {
 
 .theme-light [class*='border-white/'] {
   border-color: var(--app-border) !important;
+}
+
+.app-content::-webkit-scrollbar {
+  width: 0.65rem;
+}
+
+.app-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-content::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-muted) 32%, transparent);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.app-content::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--app-accent) 42%, transparent);
+  background-clip: content-box;
 }
 
 @media (max-width: 1320px) {

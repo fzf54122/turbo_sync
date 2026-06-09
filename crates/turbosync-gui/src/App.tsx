@@ -1,5 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addNode,
   addTask,
@@ -7,7 +7,6 @@ import {
   loadSnapshot,
   removeNode,
   removeTask,
-  rescanTask,
   startWatch,
   stopWatch,
   syncTask,
@@ -25,6 +24,15 @@ import type { AgentReadyResponse, CreateNodeRequest, CreateTaskRequest, Snapshot
 type Theme = 'light' | 'dark';
 type ActiveForm = 'node' | 'task' | null;
 
+const FOCUSABLE_DIALOG_ELEMENTS = [
+  'button:not([disabled])',
+  '[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
 function initialTheme(): Theme {
   return window.localStorage.getItem('feisuo-theme') === 'dark' ? 'dark' : 'light';
 }
@@ -38,6 +46,12 @@ export default function App() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [showAbout, setShowAbout] = useState(false);
+  const selectedTaskIdRef = useRef('');
+  const formPanelRef = useRef<HTMLElement | null>(null);
+  const aboutDialogRef = useRef<HTMLElement | null>(null);
+  const aboutCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lastFocusedElementRef = useRef<HTMLElement | null>(null);
 
   const selectedNode = useMemo(
     () => snapshot?.nodes.find((node) => node.id === selectedNodeId),
@@ -62,28 +76,95 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    selectedTaskIdRef.current = selectedTaskId;
+  }, [selectedTaskId]);
+
+  useEffect(() => {
+    if (!showAbout) return;
+
+    const previousFocus = lastFocusedElementRef.current;
+    const focusCloseButton = () => aboutCloseButtonRef.current?.focus();
+    const trapDialogFocus = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowAbout(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = Array.from(
+        aboutDialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_DIALOG_ELEMENTS) ?? [],
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (!firstElement || !lastElement) {
+        event.preventDefault();
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    focusCloseButton();
+    document.addEventListener('keydown', trapDialogFocus);
+
+    return () => {
+      document.removeEventListener('keydown', trapDialogFocus);
+      previousFocus?.focus();
+      lastFocusedElementRef.current = null;
+    };
+  }, [showAbout]);
+
+  useEffect(() => {
+    if (!activeForm) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      formPanelRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeForm]);
+
+  useEffect(() => {
     let mounted = true;
-    let unlistenRefresh: (() => void) | undefined;
-    let unlistenTheme: (() => void) | undefined;
+    const unlisteners: Array<() => void> = [];
+    const registerMenu = (eventName: string, handler: () => void) => {
+      void listen(eventName, handler).then((unlisten) => {
+        if (mounted) unlisteners.push(unlisten);
+        else unlisten();
+      });
+    };
+    const runSelectedTaskAction = (action: (taskId: string) => Promise<Snapshot>) => {
+      const taskId = selectedTaskIdRef.current;
+      if (taskId) void mutate(() => action(taskId));
+      else setActiveForm('task');
+    };
 
-    void listen('menu://refresh', () => {
+    registerMenu('menu://refresh', () => {
       void refresh();
-    }).then((unlisten) => {
-      if (mounted) unlistenRefresh = unlisten;
-      else unlisten();
     });
-
-    void listen('menu://toggle-theme', () => {
-      toggleTheme();
-    }).then((unlisten) => {
-      if (mounted) unlistenTheme = unlisten;
-      else unlisten();
-    });
+    registerMenu('menu://toggle-theme', toggleTheme);
+    registerMenu('menu://add-node', () => setActiveForm('node'));
+    registerMenu('menu://add-task', () => setActiveForm('task'));
+    registerMenu('menu://sync-selected', () => runSelectedTaskAction(syncTask));
+    registerMenu('menu://watch-selected', () => runSelectedTaskAction(startWatch));
+    registerMenu('menu://stop-watch-selected', () => runSelectedTaskAction(stopWatch));
+    registerMenu('menu://about', openAbout);
 
     return () => {
       mounted = false;
-      unlistenRefresh?.();
-      unlistenTheme?.();
+      unlisteners.forEach((unlisten) => unlisten());
     };
   }, []);
 
@@ -121,6 +202,17 @@ export default function App() {
 
   function toggleTheme() {
     setTheme((current) => (current === 'light' ? 'dark' : 'light'));
+  }
+
+  function openAbout() {
+    lastFocusedElementRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    setShowAbout(true);
+  }
+
+  function closeAbout() {
+    setShowAbout(false);
   }
 
   async function submitNode(request: CreateNodeRequest) {
@@ -165,11 +257,9 @@ export default function App() {
         <section className="hero-grid">
           <div className="hero-panel">
             <div>
-              <p className="section-kicker">飞梭同步是做什么的</p>
-              <h1 className="hero-title">把一个文件夹，自动同步到另一台设备或目录</h1>
-              <p className="hero-copy">
-                先添加设备，再创建同步路线。之后可以手动同步，也可以开启监听，文件变化后自动处理。
-              </p>
+              <p className="section-kicker">飞梭同步</p>
+              <h1 className="hero-title">文件夹自动同步</h1>
+              <p className="hero-copy">添加设备 → 创建路线 → 同步或监听。</p>
             </div>
             <div className="hero-actions">
               <button className="primary-button px-5" onClick={() => setActiveForm('task')} type="button">创建同步路线</button>
@@ -179,7 +269,7 @@ export default function App() {
 
           <section className="route-panel route-panel-featured">
             <div>
-              <p className="section-kicker">当前正在同步</p>
+              <p className="section-kicker">当前选中的同步路线</p>
               <h2 className="section-title">{selectedTask ? selectedTask.name : '还没有选择同步路线'}</h2>
             </div>
             {selectedTask ? (
@@ -200,28 +290,24 @@ export default function App() {
             ) : (
               <div className="route-empty">
                 <strong>先创建一条同步路线</strong>
-                <p>例如：把本机项目目录同步到 NAS，或同步到另一台 Linux 服务器。</p>
                 <button className="primary-button px-5" onClick={() => setActiveForm('task')} type="button">创建同步路线</button>
               </div>
             )}
           </section>
         </section>
 
-        <section className="guide-grid">
+        <section className="guide-grid" aria-label="快速流程">
           <div className={`guide-card ${hasNodes ? 'is-done' : ''}`}>
             <span>1</span>
             <strong>添加设备</strong>
-            <p>本机、NAS、服务器或 Docker Agent 都可以作为同步节点。</p>
           </div>
           <div className={`guide-card ${hasTasks ? 'is-done' : ''}`}>
             <span>2</span>
-            <strong>创建同步路线</strong>
-            <p>选择源目录、目标设备和目标目录，决定单向或双向同步。</p>
+            <strong>创建路线</strong>
           </div>
           <div className={`guide-card ${watching > 0 ? 'is-done' : ''}`}>
             <span>3</span>
-            <strong>同步或监听</strong>
-            <p>点击同步立即执行；开启监听后，文件变化会自动处理。</p>
+            <strong>同步 / 监听</strong>
           </div>
         </section>
 
@@ -233,7 +319,7 @@ export default function App() {
         </section>
 
         {activeForm && (
-          <section className="panel p-5">
+          <section className="panel form-panel p-5" ref={formPanelRef}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="section-kicker">{activeForm === 'node' ? '添加设备' : '创建路线'}</p>
@@ -254,12 +340,12 @@ export default function App() {
             busy={busy}
             nodes={snapshot?.nodes ?? []}
             onRemove={(taskId) => void mutate(() => removeTask(taskId))}
-            onRescan={(taskId) => void mutate(() => rescanTask(taskId))}
             onSelect={setSelectedTaskId}
             onStartWatch={(taskId) => void mutate(() => startWatch(taskId))}
             onStopWatch={(taskId) => void mutate(() => stopWatch(taskId))}
             onSync={(taskId) => void mutate(() => syncTask(taskId))}
             selectedTaskId={selectedTaskId}
+            runs={snapshot?.logs.runs ?? []}
             tasks={snapshot?.tasks ?? []}
             watchedTaskIds={snapshot?.watched_task_ids ?? []}
           />
@@ -275,6 +361,24 @@ export default function App() {
           </aside>
         </section>
       </div>
+
+      {showAbout && (
+        <div className="about-backdrop" role="presentation" onClick={closeAbout}>
+          <section
+            aria-labelledby="about-title"
+            aria-modal="true"
+            className="about-dialog"
+            onClick={(event) => event.stopPropagation()}
+            ref={aboutDialogRef}
+            role="dialog"
+          >
+            <p className="section-kicker">关于</p>
+            <h2 className="section-title" id="about-title">飞梭同步</h2>
+            <p>文件夹自动同步工具，用于管理设备、同步路线和监听任务。</p>
+            <button className="primary-button w-full" onClick={closeAbout} ref={aboutCloseButtonRef} type="button">知道了</button>
+          </section>
+        </div>
+      )}
     </AppShell>
   );
 }
