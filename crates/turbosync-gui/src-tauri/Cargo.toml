@@ -8,6 +8,10 @@ build = "build.rs"
 
 [workspace]
 
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [lib]
 name = "turbosync_gui_lib"
 path = "src/lib.rs"
