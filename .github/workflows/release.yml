@@ -83,12 +83,16 @@ jobs:
       - name: Build CLI and agent
         run: cargo build --release --target ${{ matrix.target }} --workspace
 
-      - name: Build desktop bundles
+      - name: Build Linux desktop GUI
+        if: runner.os == 'Linux'
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
+
+      - name: Build native desktop bundles
+        if: runner.os != 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           case "${RUNNER_OS}" in
-            Linux) bundles="none" ;;
             macOS) bundles="app,dmg" ;;
             Windows) bundles="msi" ;;
             *) bundles="none" ;;
