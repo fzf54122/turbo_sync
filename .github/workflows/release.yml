@@ -80,12 +80,33 @@ jobs:
       - name: Build frontend
         run: npm --prefix crates/turbosync-gui run build
 
-      - name: Build CLI and agent
-        run: cargo build --release --target ${{ matrix.target }} --workspace
-
-      - name: Build Linux desktop GUI
+      - name: Build Linux binaries for Deepin 20.9 compatibility
         if: runner.os == 'Linux'
-        run: cargo build --release --target ${{ matrix.target }} --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
+        run: |
+          docker run --rm \
+            -v "${PWD}:/work" \
+            -w /work \
+            rust:1-buster \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential \
+                ca-certificates \
+                libappindicator3-dev \
+                libgtk-3-dev \
+                librsvg2-dev \
+                libssl-dev \
+                libwebkit2gtk-4.0-dev \
+                patchelf \
+                pkg-config
+              cargo build --release --target x86_64-unknown-linux-gnu --workspace
+              cargo build --release --target x86_64-unknown-linux-gnu --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
+            '
+
+      - name: Build CLI and agent
+        if: runner.os != 'Linux'
+        run: cargo build --release --target ${{ matrix.target }} --workspace
 
       - name: Build native desktop bundles
         if: runner.os != 'Linux'
@@ -112,7 +133,12 @@ jobs:
           mkdir -p "dist/${PACKAGE}"
           cp "${MAIN_TARGET}/tsync${{ matrix.bin_ext }}" "dist/${PACKAGE}/"
           cp "${MAIN_TARGET}/turbosync-agent${{ matrix.bin_ext }}" "dist/${PACKAGE}/"
-          cp "${GUI_TARGET}/tsync-gui${{ matrix.bin_ext }}" "dist/${PACKAGE}/"
+          GUI_BINARY="$(find crates/turbosync-gui/src-tauri/target -type f -path "*/release/tsync-gui${{ matrix.bin_ext }}" | head -n 1)"
+          if [[ -n "${GUI_BINARY}" ]]; then
+            cp "${GUI_BINARY}" "dist/${PACKAGE}/"
+          else
+            echo "::warning::Portable GUI binary was not found; native app bundle will be used instead."
+          fi
           cp README.md LICENSE "dist/${PACKAGE}/"
 
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
