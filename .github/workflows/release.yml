@@ -21,7 +21,8 @@ jobs:
             label: Linux x64
             target: x86_64-unknown-linux-gnu
             bin_ext: ""
-            archive: tar.gz
+            archive: deb
+            deb_arch: amd64
           - os: macos-13
             label: macOS x64
             target: x86_64-apple-darwin
@@ -84,7 +85,8 @@ jobs:
       - name: Build desktop GUI
         run: cargo build --release --target ${{ matrix.target }} --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
 
-      - name: Prepare package
+      - name: Prepare portable package
+        if: runner.os != 'Linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -99,8 +101,58 @@ jobs:
           cp "${GUI_TARGET}/tsync-gui${{ matrix.bin_ext }}" "dist/${PACKAGE}/"
           cp README.md LICENSE "dist/${PACKAGE}/"
 
-      - name: Archive Unix package
-        if: runner.os != 'Windows'
+      - name: Build Debian package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME:-v0.1.0}"
+          DEB_VERSION="${VERSION#v}"
+          PACKAGE="turbosync_${DEB_VERSION}_${{ matrix.deb_arch }}"
+          MAIN_TARGET="target/${{ matrix.target }}/release"
+          GUI_TARGET="crates/turbosync-gui/src-tauri/target/${{ matrix.target }}/release"
+          ROOT="dist/deb/${PACKAGE}"
+
+          mkdir -p \
+            "${ROOT}/DEBIAN" \
+            "${ROOT}/usr/bin" \
+            "${ROOT}/usr/share/applications" \
+            "${ROOT}/usr/share/doc/turbosync" \
+            "${ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          install -m 0755 "${MAIN_TARGET}/tsync" "${ROOT}/usr/bin/tsync"
+          install -m 0755 "${MAIN_TARGET}/turbosync-agent" "${ROOT}/usr/bin/turbosync-agent"
+          install -m 0755 "${GUI_TARGET}/tsync-gui" "${ROOT}/usr/bin/tsync-gui"
+          install -m 0644 README.md LICENSE "${ROOT}/usr/share/doc/turbosync/"
+          install -m 0644 crates/turbosync-gui/src-tauri/icons/256x256.png "${ROOT}/usr/share/icons/hicolor/256x256/apps/turbosync.png"
+
+          cat > "${ROOT}/usr/share/applications/turbosync.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=飞梭同步
+          Comment=Folder synchronization tool
+          Exec=tsync-gui
+          Icon=turbosync
+          Terminal=false
+          Categories=Utility;FileTools;
+          DESKTOP
+
+          cat > "${ROOT}/DEBIAN/control" <<EOF
+          Package: turbosync
+          Version: ${DEB_VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: fengzhanfei
+          Depends: libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0, libgtk-3-0, libayatana-appindicator3-1 | libappindicator3-1, librsvg2-2
+          Description: 飞梭同步 desktop file synchronization tool
+           Includes the tsync CLI, turbosync-agent service, and Tauri desktop GUI.
+          EOF
+
+          dpkg-deb --build "${ROOT}" "dist/${PACKAGE}.deb"
+
+      - name: Archive macOS package
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -121,6 +173,7 @@ jobs:
         with:
           name: turbosync-${{ matrix.target }}
           path: |
+            dist/*.deb
             dist/*.tar.gz
             dist/*.zip
           if-no-files-found: error
@@ -130,6 +183,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/*.deb
             dist/*.tar.gz
             dist/*.zip
           generate_release_notes: true

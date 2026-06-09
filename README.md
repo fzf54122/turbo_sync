@@ -289,12 +289,12 @@ CI 已配置：
 - Desktop GUI build/check
 - Desktop GUI fmt/clippy
 
-Release workflow 会在 `v*` tag 推送时构建三平台包：
+Release workflow 会在 `v*` tag 推送时构建三平台安装包：
 
-- Linux x64
-- macOS x64
-- macOS ARM64
-- Windows x64
+- Linux x64：`.deb`，安装后提供 `tsync`、`turbosync-agent` 和桌面入口 `tsync-gui`
+- macOS x64：`.tar.gz`
+- macOS ARM64：`.tar.gz`
+- Windows x64：`.zip`
 
 创建发布：
 
@@ -329,3 +329,11 @@ docs/product/landing.zh.md     # 产品介绍和官网文案
 ## License
 
 MIT
+
+---
+
+<div align="center">
+
+📧 zhanfei.feng@macrocura.com
+
+</div>
