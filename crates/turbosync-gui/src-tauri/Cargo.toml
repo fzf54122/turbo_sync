@@ -12,6 +12,12 @@ build = "build.rs"
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 [lib]
 name = "turbosync_gui_lib"
 path = "src/lib.rs"

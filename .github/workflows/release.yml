@@ -99,9 +99,16 @@ jobs:
                 libssl-dev \
                 libwebkit2gtk-4.0-dev \
                 patchelf \
-                pkg-config
+                pkg-config \
+                upx-ucl
               cargo build --release --target x86_64-unknown-linux-gnu --workspace
               cargo build --release --target x86_64-unknown-linux-gnu --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
+              strip target/x86_64-unknown-linux-gnu/release/tsync
+              strip target/x86_64-unknown-linux-gnu/release/turbosync-agent
+              strip crates/turbosync-gui/src-tauri/target/x86_64-unknown-linux-gnu/release/tsync-gui
+              upx --best --lzma target/x86_64-unknown-linux-gnu/release/tsync
+              upx --best --lzma target/x86_64-unknown-linux-gnu/release/turbosync-agent
+              upx --best --lzma crates/turbosync-gui/src-tauri/target/x86_64-unknown-linux-gnu/release/tsync-gui
             '
 
       - name: Build CLI and agent
