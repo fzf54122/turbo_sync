@@ -87,8 +87,11 @@ jobs:
             -v "${PWD}:/work" \
             -w /work \
             rust:1-buster \
-            bash -lc '
+            bash -c '
               set -euo pipefail
+              export PATH="/usr/local/cargo/bin:${PATH}"
+              rustc --version
+              cargo --version
               printf "%s\n" \
                 "deb http://archive.debian.org/debian buster main" \
                 "deb http://archive.debian.org/debian-security buster/updates main" \
