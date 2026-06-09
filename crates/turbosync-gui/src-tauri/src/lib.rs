@@ -377,6 +377,9 @@ fn agent_command_specs_for(current_exe: &Path) -> Vec<AgentCommandSpec> {
 
     if let Some(exe_dir) = current_exe.parent() {
         push_sibling_agent_specs(&mut specs, exe_dir);
+        for resource_dir in bundled_resource_dirs(exe_dir) {
+            push_sibling_agent_specs(&mut specs, &resource_dir);
+        }
     }
     if let Some(repo_root) = find_repo_root(current_exe) {
         push_repo_agent_specs(&mut specs, &repo_root);
@@ -388,16 +391,51 @@ fn agent_command_specs_for(current_exe: &Path) -> Vec<AgentCommandSpec> {
 }
 
 fn push_sibling_agent_specs(specs: &mut Vec<AgentCommandSpec>, exe_dir: &Path) {
-    specs.push(AgentCommandSpec {
-        program: exe_dir.join(exe_name("turbosync-agent")),
-        args: Vec::new(),
-        current_dir: None,
-    });
-    specs.push(AgentCommandSpec {
-        program: exe_dir.join(exe_name("tsync")),
-        args: vec!["agent".into(), "run".into()],
-        current_dir: None,
-    });
+    for agent_name in sidecar_names("turbosync-agent") {
+        specs.push(AgentCommandSpec {
+            program: exe_dir.join(agent_name),
+            args: Vec::new(),
+            current_dir: None,
+        });
+    }
+
+    for cli_name in sidecar_names("tsync") {
+        specs.push(AgentCommandSpec {
+            program: exe_dir.join(cli_name),
+            args: vec!["agent".into(), "run".into()],
+            current_dir: None,
+        });
+    }
+}
+
+fn bundled_resource_dirs(exe_dir: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![exe_dir.join("resources")];
+
+    if let Some(contents_dir) = exe_dir.parent() {
+        dirs.push(contents_dir.join("Resources"));
+    }
+
+    dirs
+}
+
+fn sidecar_names(name: &str) -> Vec<String> {
+    let mut names = vec![exe_name(name)];
+
+    for target in sidecar_target_triples() {
+        names.push(exe_name(&format!("{name}-{target}")));
+    }
+
+    names
+}
+
+fn sidecar_target_triples() -> &'static [&'static str] {
+    if cfg!(target_os = "windows") {
+        &["x86_64-pc-windows-msvc"]
+    } else if cfg!(target_os = "macos") {
+        &["aarch64-apple-darwin", "x86_64-apple-darwin"]
+    } else {
+        &["x86_64-unknown-linux-gnu"]
+    }
 }
 
 fn push_repo_agent_specs(specs: &mut Vec<AgentCommandSpec>, repo_root: &Path) {

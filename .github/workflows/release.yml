@@ -139,9 +139,70 @@ jobs:
         if: runner.os != 'Linux'
         run: cargo build --release --target ${{ matrix.target }} --workspace
 
+      - name: Stage desktop sidecars
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIDECAR_DIR="crates/turbosync-gui/src-tauri/binaries"
+          mkdir -p "${SIDECAR_DIR}"
+          cp "target/${{ matrix.target }}/release/tsync${{ matrix.bin_ext }}" "${SIDECAR_DIR}/tsync-${{ matrix.target }}${{ matrix.bin_ext }}"
+          cp "target/${{ matrix.target }}/release/turbosync-agent${{ matrix.bin_ext }}" "${SIDECAR_DIR}/turbosync-agent-${{ matrix.target }}${{ matrix.bin_ext }}"
+
+      - name: Verify macOS signing secrets
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID KEYCHAIN_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required GitHub secret: ${name}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Import Apple Developer ID certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security import certificate.p12 -k build.keychain -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" build.keychain
+          security find-identity -v -p codesigning build.keychain
+          CERT_INFO="$(security find-identity -v -p codesigning build.keychain | grep 'Developer ID Application' | head -n 1)"
+          if [[ -z "${CERT_INFO}" ]]; then
+            echo "::error::Developer ID Application certificate was not found in imported keychain."
+            exit 1
+          fi
+          CERT_ID="$(echo "${CERT_INFO}" | awk -F'"' '{print $2}')"
+          echo "APPLE_SIGNING_IDENTITY=${CERT_ID}" >> "${GITHUB_ENV}"
+
       - name: Build native desktop bundles
         if: runner.os != 'Linux'
         shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
           case "${RUNNER_OS}" in
