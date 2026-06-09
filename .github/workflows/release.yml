@@ -23,16 +23,6 @@ jobs:
             bin_ext: ""
             archive: deb
             deb_arch: amd64
-          - os: macos-13
-            label: macOS x64
-            target: x86_64-apple-darwin
-            bin_ext: ""
-            archive: tar.gz
-          - os: macos-latest
-            label: macOS ARM64
-            target: aarch64-apple-darwin
-            bin_ext: ""
-            archive: tar.gz
           - os: windows-latest
             label: Windows x64
             target: x86_64-pc-windows-msvc
@@ -149,68 +139,10 @@ jobs:
           cp "target/${{ matrix.target }}/release/tsync${{ matrix.bin_ext }}" "${SIDECAR_DIR}/tsync-${{ matrix.target }}${{ matrix.bin_ext }}"
           cp "target/${{ matrix.target }}/release/turbosync-agent${{ matrix.bin_ext }}" "${SIDECAR_DIR}/turbosync-agent-${{ matrix.target }}${{ matrix.bin_ext }}"
 
-      - name: Verify macOS signing secrets
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          set -euo pipefail
-          missing=0
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID KEYCHAIN_PASSWORD; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing required GitHub secret: ${name}"
-              missing=1
-            fi
-          done
-          exit "${missing}"
-
-      - name: Import Apple Developer ID certificate
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          set -euo pipefail
-          echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
-          security create-keychain -p "${KEYCHAIN_PASSWORD}" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" build.keychain
-          security set-keychain-settings -lut 21600 build.keychain
-          security import certificate.p12 -k build.keychain -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" build.keychain
-          security find-identity -v -p codesigning build.keychain
-          CERT_INFO="$(security find-identity -v -p codesigning build.keychain | grep 'Developer ID Application' | head -n 1)"
-          if [[ -z "${CERT_INFO}" ]]; then
-            echo "::error::Developer ID Application certificate was not found in imported keychain."
-            exit 1
-          fi
-          CERT_ID="$(echo "${CERT_INFO}" | awk -F'"' '{print $2}')"
-          echo "APPLE_SIGNING_IDENTITY=${CERT_ID}" >> "${GITHUB_ENV}"
-
       - name: Build native desktop bundles
-        if: runner.os != 'Linux'
+        if: runner.os == 'Windows'
         shell: bash
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-        run: |
-          set -euo pipefail
-          case "${RUNNER_OS}" in
-            macOS) bundles="app,dmg" ;;
-            Windows) bundles="msi" ;;
-            *) bundles="none" ;;
-          esac
-          npm --prefix crates/turbosync-gui run tauri build -- --target ${{ matrix.target }} --bundles "${bundles}" --ci
+        run: npm --prefix crates/turbosync-gui run tauri build -- --target ${{ matrix.target }} --bundles msi --ci
 
       - name: Prepare portable package
         if: runner.os != 'Linux'
@@ -327,15 +259,6 @@ jobs:
 
           dpkg-deb --root-owner-group -Zxz --build "${ROOT}" "dist/${PACKAGE}.deb"
 
-      - name: Archive macOS package
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${GITHUB_REF_NAME:-manual}"
-          PACKAGE="turbosync-${VERSION}-${{ matrix.target }}"
-          tar -C dist -czf "dist/${PACKAGE}.tar.gz" "${PACKAGE}"
-
       - name: Archive Windows package
         if: runner.os == 'Windows'
         shell: pwsh
@@ -351,9 +274,7 @@ jobs:
           name: turbosync-${{ matrix.target }}
           path: |
             dist/*.deb
-            dist/*.dmg
             dist/*.msi
-            dist/*.tar.gz
             dist/*.zip
           if-no-files-found: error
 
@@ -363,8 +284,6 @@ jobs:
         with:
           files: |
             dist/*.deb
-            dist/*.dmg
             dist/*.msi
-            dist/*.tar.gz
             dist/*.zip
           generate_release_notes: true

@@ -346,6 +346,13 @@ fn spawn_agent(spec: &AgentCommandSpec) -> Result<Child> {
         }
     }
 
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
     if let Some(current_dir) = &spec.current_dir {
         command.current_dir(current_dir);
     }
