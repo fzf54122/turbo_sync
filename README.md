@@ -1,4 +1,4 @@
-# 飞梭同步 TurboSync
+# 飞梭同步
 
 <div align="center">
 
@@ -15,7 +15,7 @@
 
 ## 项目定位
 
-飞梭同步是 TurboSync 的中文名。它把文件同步拆成两个角色：
+飞梭同步把文件同步拆成两个角色：
 
 - `turbosync-agent`：本机后台同步服务，负责扫描、监听、同步和传输。
 - `tsync` / `tsync-gui`：用户入口，负责创建节点、创建任务、触发同步和查看状态。
@@ -26,7 +26,7 @@
 
 | 能力 | 当前状态 |
 |------|----------|
-| 桌面 GUI | 已支持，Slint 原生跨平台窗口，不使用 Electron 或 WebView |
+| 桌面 GUI | 已支持，Tauri + React 桌面控制台，复用 Rust Agent 能力 |
 | 终端 TUI | 已支持，默认中文，可切换 English |
 | CLI | 已支持节点、任务、同步、扫描、监听、日志 |
 | 本地同步 | 已支持本机目录到本机目录 |
@@ -85,7 +85,7 @@ tsync dashboard
 
 ## 桌面端
 
-桌面端二进制名是 `tsync-gui`，产品名显示为 **飞梭同步 TurboSync**。
+桌面端二进制名是 `tsync-gui`，产品名显示为 **飞梭同步**。界面使用 Tauri + React + TypeScript 实现，保留 Rust 后端同步能力，并提供更现代的桌面控制台体验。
 
 发布包中会同时包含：
 
@@ -101,12 +101,6 @@ GUI 会按顺序寻找可启动的本机 Agent：
 4. `PATH` 中的 `turbosync-agent` 或 `tsync`
 
 这保证了发布包、源码开发和系统安装三种方式都能运行。
-
-吉祥物图标位于：
-
-```text
-crates/turbosync-gui/assets/feisuo-mascot.svg
-```
 
 ## 命令行
 
@@ -234,7 +228,7 @@ turbo_sync/
 |   |-- turbosync-agent/      # 本机 Agent 和控制 API
 |   |-- turbosync-cli/        # tsync 命令行入口
 |   |-- turbosync-core/       # 配置、模型、通用类型
-|   |-- turbosync-gui/        # 桌面 GUI，独立 workspace
+|   |-- turbosync-gui/        # Tauri + React 桌面 GUI，独立应用
 |   |-- turbosync-storage/    # SQLite / SQLx 持久化
 |   |-- turbosync-sync/       # 文件扫描、同步引擎、文件监听
 |   |-- turbosync-transport/  # Agent-to-Agent QUIC 传输
@@ -261,14 +255,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-GUI 是独立 workspace，需要单独检查：
+GUI 是 Tauri + React 独立应用，需要单独检查：
 
 ```bash
 make build-gui
-cargo fmt --manifest-path crates/turbosync-gui/Cargo.toml --all --check
-cargo clippy --manifest-path crates/turbosync-gui/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path crates/turbosync-gui/Cargo.toml
+make gui-check
 ```
+
+等价于前端构建、Tauri Rust fmt/clippy/test 和 Tauri shell 编译检查。
 
 ### 手动自测
 

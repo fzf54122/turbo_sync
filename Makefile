@@ -4,8 +4,10 @@ BIN ?= cargo run -p turbosync-cli --
 SELFTEST_DIR ?= /tmp/turbosync-selftest
 SELFTEST_CONFIG ?= $(SELFTEST_DIR)/local/config.toml
 SELFTEST_DB ?= $(SELFTEST_DIR)/local/turbosync.db
+GUI_DIR := crates/turbosync-gui
+GUI_TAURI := $(GUI_DIR)/src-tauri/Cargo.toml
 
-.PHONY: help fmt fmt-fix clippy test check build build-gui release release-gui gui clean init agent dashboard status logs selftest-init selftest-agent selftest-dashboard
+.PHONY: help fmt fmt-fix clippy test check build build-gui gui-check release release-gui gui clean init agent dashboard status logs selftest-init selftest-agent selftest-dashboard
 
 help:
 	@printf '%s\n' 'TurboSync targets:'
@@ -15,9 +17,10 @@ help:
 	@printf '%s\n' '  make clippy             Run clippy with warnings denied'
 	@printf '%s\n' '  make test               Run all workspace tests'
 	@printf '%s\n' '  make build              Build the workspace'
-	@printf '%s\n' '  make build-gui          Build the desktop GUI'
+	@printf '%s\n' '  make build-gui          Build the Tauri desktop GUI frontend and Rust shell'
+	@printf '%s\n' '  make gui-check          Run GUI frontend build and Tauri Rust checks'
 	@printf '%s\n' '  make release            Build release binaries'
-	@printf '%s\n' '  make release-gui        Build the desktop GUI release binary'
+	@printf '%s\n' '  make release-gui        Build the Tauri desktop GUI bundle'
 	@printf '%s\n' '  make gui                Run the desktop GUI'
 	@printf '%s\n' '  make init               Run tsync init'
 	@printf '%s\n' '  make agent              Run the local agent'
@@ -46,17 +49,24 @@ build:
 	cargo build --workspace
 
 build-gui:
-	cargo build --manifest-path crates/turbosync-gui/Cargo.toml
+	npm --prefix $(GUI_DIR) run build
+	cargo check --manifest-path $(GUI_TAURI)
+
+gui-check:
+	npm --prefix $(GUI_DIR) run build
+	cargo fmt --manifest-path $(GUI_TAURI) --all --check
+	cargo clippy --manifest-path $(GUI_TAURI) --all-targets -- -D warnings
+	cargo test --manifest-path $(GUI_TAURI)
 
 release:
 	cargo build --release --workspace
 
 release-gui:
-	cargo build --release --manifest-path crates/turbosync-gui/Cargo.toml
+	npm --prefix $(GUI_DIR) run tauri -- build
 
 gui:
 	cargo build -p turbosync-agent -p turbosync-cli
-	cargo run --manifest-path crates/turbosync-gui/Cargo.toml
+	npm --prefix $(GUI_DIR) run tauri -- dev
 
 clean:
 	cargo clean

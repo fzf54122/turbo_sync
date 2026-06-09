@@ -3,6 +3,10 @@
 **/target/
 **/*.rs.bk
 
+# Frontend build artifacts
+**/node_modules/
+**/dist/
+
 # Rust tooling / coverage
 /.cargo/.package-cache
 /tarpaulin-report.html

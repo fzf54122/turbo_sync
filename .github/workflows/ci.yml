@@ -40,7 +40,7 @@ jobs:
         run: cargo test --workspace
 
   desktop-gui:
-    name: Desktop GUI check
+    name: Tauri desktop GUI check
     runs-on: ubuntu-latest
 
     steps:
@@ -52,32 +52,42 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install Linux GUI dependencies
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/turbosync-gui/package-lock.json
+
+      - name: Install Linux Tauri dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libfontconfig1-dev \
-            libgl1-mesa-dev \
-            libwayland-dev \
-            libx11-dev \
-            libx11-xcb-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev
+            libwebkit2gtk-4.0-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            crates/turbosync-gui -> target
+            crates/turbosync-gui/src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm --prefix crates/turbosync-gui ci
+
+      - name: Build frontend
+        run: npm --prefix crates/turbosync-gui run build
 
       - name: Check desktop GUI
-        run: cargo check --manifest-path crates/turbosync-gui/Cargo.toml
+        run: cargo check --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
 
       - name: Check GUI formatting
-        run: cargo fmt --manifest-path crates/turbosync-gui/Cargo.toml --all --check
+        run: cargo fmt --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml --all --check
 
       - name: Run GUI clippy
-        run: cargo clippy --manifest-path crates/turbosync-gui/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run GUI tests
+        run: cargo test --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
