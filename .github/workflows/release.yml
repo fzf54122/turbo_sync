@@ -420,7 +420,7 @@ jobs:
           /usr/share/icons/hicolor/256x256/apps/turbosync.png
           EOF
 
-          rpmbuild -bb --define "_topdir ${RPM_TOPDIR}" "${RPM_TOPDIR}/SPECS/turbosync.spec"
+          rpmbuild -bb --target "${RPM_ARCH}" --define "_topdir ${RPM_TOPDIR}" "${RPM_TOPDIR}/SPECS/turbosync.spec"
           find "${RPM_TOPDIR}/RPMS" -type f -name '*.rpm' -exec cp {} dist/ \;
 
       - name: Archive Windows package
