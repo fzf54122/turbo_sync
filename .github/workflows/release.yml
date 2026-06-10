@@ -397,7 +397,7 @@ jobs:
           Release: 1%{?dist}
           Summary: 飞梭同步 desktop file synchronization tool
           License: MIT
-          BuildArch: ${RPM_ARCH}
+          BuildArch: noarch
           Source0: turbosync-files.tar.gz
 
           %description
@@ -420,7 +420,7 @@ jobs:
           /usr/share/icons/hicolor/256x256/apps/turbosync.png
           EOF
 
-          rpmbuild -bb --target "${RPM_ARCH}" --define "_topdir ${RPM_TOPDIR}" "${RPM_TOPDIR}/SPECS/turbosync.spec"
+          rpmbuild -bb --define "_topdir ${RPM_TOPDIR}" "${RPM_TOPDIR}/SPECS/turbosync.spec"
           find "${RPM_TOPDIR}/RPMS" -type f -name '*.rpm' -exec cp {} dist/ \;
 
       - name: Archive Windows package

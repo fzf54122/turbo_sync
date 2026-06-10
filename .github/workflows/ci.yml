@@ -14,6 +14,27 @@ permissions:
   contents: read
 
 jobs:
+  website:
+    name: Website build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website dependencies
+        run: npm --prefix website ci
+
+      - name: Build website
+        run: npm --prefix website run build
+
   rust-checks:
     name: Rust checks
     runs-on: ubuntu-latest
@@ -72,6 +93,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
+            . -> target
             crates/turbosync-gui/src-tauri -> target
 
       - name: Install frontend dependencies
@@ -80,8 +102,18 @@ jobs:
       - name: Build frontend
         run: npm --prefix crates/turbosync-gui run build
 
-      - name: Check desktop GUI
-        run: cargo check --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
+      - name: Stage desktop sidecars
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p turbosync-cli -p turbosync-agent
+          SIDECAR_DIR="crates/turbosync-gui/src-tauri/binaries"
+          mkdir -p "${SIDECAR_DIR}"
+          cp target/debug/tsync "${SIDECAR_DIR}/tsync-x86_64-unknown-linux-gnu"
+          cp target/debug/turbosync-agent "${SIDECAR_DIR}/turbosync-agent-x86_64-unknown-linux-gnu"
+
+      - name: Build desktop GUI
+        run: cargo build --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml
 
       - name: Check GUI formatting
         run: cargo fmt --manifest-path crates/turbosync-gui/src-tauri/Cargo.toml --all --check
