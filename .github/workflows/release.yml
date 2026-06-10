@@ -397,7 +397,7 @@ jobs:
           Release: 1%{?dist}
           Summary: 飞梭同步 desktop file synchronization tool
           License: MIT
-          BuildArch: noarch
+          BuildArch: ${RPM_ARCH}
           Source0: turbosync-files.tar.gz
 
           %description
