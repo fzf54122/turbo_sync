@@ -6,8 +6,9 @@ SELFTEST_CONFIG ?= $(SELFTEST_DIR)/local/config.toml
 SELFTEST_DB ?= $(SELFTEST_DIR)/local/turbosync.db
 GUI_DIR := crates/turbosync-gui
 GUI_TAURI := $(GUI_DIR)/src-tauri/Cargo.toml
+WEBSITE_DIR := website
 
-.PHONY: help fmt fmt-fix clippy test check build build-gui gui-check release release-gui gui clean init agent dashboard status logs selftest-init selftest-agent selftest-dashboard
+.PHONY: help fmt fmt-fix clippy test check build build-gui gui-check website website-build release release-gui gui clean init agent dashboard status logs selftest-init selftest-agent selftest-dashboard
 
 help:
 	@printf '%s\n' 'TurboSync targets:'
@@ -19,6 +20,8 @@ help:
 	@printf '%s\n' '  make build              Build the workspace'
 	@printf '%s\n' '  make build-gui          Build the Tauri desktop GUI frontend and Rust shell'
 	@printf '%s\n' '  make gui-check          Run GUI frontend build and Tauri Rust checks'
+	@printf '%s\n' '  make website            Run the website dev server'
+	@printf '%s\n' '  make website-build      Build the website'
 	@printf '%s\n' '  make release            Build release binaries'
 	@printf '%s\n' '  make release-gui        Build the Tauri desktop GUI bundle'
 	@printf '%s\n' '  make gui                Run the desktop GUI'
@@ -58,10 +61,20 @@ gui-check:
 	cargo clippy --manifest-path $(GUI_TAURI) --all-targets -- -D warnings
 	cargo test --manifest-path $(GUI_TAURI)
 
+website:
+	$(MAKE) -C $(WEBSITE_DIR) dev
+
+website-build:
+	$(MAKE) -C $(WEBSITE_DIR) build
+
 release:
 	cargo build --release --workspace
 
 release-gui:
+	cargo build --release -p turbosync-cli -p turbosync-agent
+	mkdir -p $(GUI_DIR)/src-tauri/binaries
+	cp target/release/tsync $(GUI_DIR)/src-tauri/binaries/tsync-x86_64-unknown-linux-gnu
+	cp target/release/turbosync-agent $(GUI_DIR)/src-tauri/binaries/turbosync-agent-x86_64-unknown-linux-gnu
 	npm --prefix $(GUI_DIR) run tauri -- build
 
 gui:
