@@ -6,7 +6,7 @@ SELFTEST_CONFIG ?= $(SELFTEST_DIR)/local/config.toml
 SELFTEST_DB ?= $(SELFTEST_DIR)/local/turbosync.db
 GUI_DIR := crates/turbosync-gui
 GUI_TAURI := $(GUI_DIR)/src-tauri/Cargo.toml
-WEBSITE_DIR := website
+WEBSITE_DIR := crates/website
 
 .PHONY: help fmt fmt-fix clippy test check build build-gui gui-check website website-build release release-gui gui clean init agent dashboard status logs selftest-init selftest-agent selftest-dashboard
 
