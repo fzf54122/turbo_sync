@@ -184,7 +184,7 @@ function App() {
     <div className="app">
       <header className="header">
         <button type="button" className="header-left" onClick={() => navigateTo('home')} aria-label={content.logo}>
-          <img src="/feisuo-mascot.svg" alt="" className="mascot" />
+          <img src={`${import.meta.env.BASE_URL}feisuo-mascot.svg`} alt="" className="mascot" />
           <div className="logo">{content.logo}</div>
         </button>
         <nav className="nav">
@@ -224,7 +224,7 @@ function App() {
         {page === 'home' && (
           <>
             <section className="hero">
-              <img src="/feisuo-mascot.svg" alt="飞梭吉祥物" className="hero-mascot" />
+              <img src={`${import.meta.env.BASE_URL}feisuo-mascot.svg`} alt="飞梭吉祥物" className="hero-mascot" />
               <h1 className="hero-title">{content.heroTitle}</h1>
               <p className="hero-subtitle">{content.heroSubtitle}</p>
               <p className="hero-desc">{content.heroDesc}</p>
