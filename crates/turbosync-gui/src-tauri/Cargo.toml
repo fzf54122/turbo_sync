@@ -3,7 +3,7 @@ name = "tsync-gui"
 edition = "2021"
 license = "MIT"
 rust-version = "1.78"
-version = "0.1.0"
+version = "0.1.2"
 build = "build.rs"
 
 [workspace]
