@@ -13,7 +13,8 @@ pub type FileIndexHandler = Arc<dyn Fn(String) -> Result<Vec<u8>> + Send + Sync>
 pub type PullFileHandler = Arc<dyn Fn(String, String) -> Result<Vec<u8>> + Send + Sync>;
 
 /// Handler for incoming file operations: receives (target_root, relative_path, op_kind, bytes).
-pub type IncomingFileOpHandler = Arc<dyn Fn(String, String, String, u64) -> Result<()> + Send + Sync>;
+pub type IncomingFileOpHandler =
+    Arc<dyn Fn(String, String, String, u64) -> Result<()> + Send + Sync>;
 
 // ── certificate helpers ───────────────────────────────────────────────
 
@@ -304,7 +305,11 @@ async fn handle_stream(
     }
 }
 
-async fn handle_file_op(send: &mut SendStream, recv: &mut RecvStream, handlers: &ConnectionHandlers) -> Result<()> {
+async fn handle_file_op(
+    send: &mut SendStream,
+    recv: &mut RecvStream,
+    handlers: &ConnectionHandlers,
+) -> Result<()> {
     let target_root = read_string(recv, "target_root").await?;
     let target_root = PathBuf::from(target_root);
     let relative_path = read_string(recv, "relative_path").await?;

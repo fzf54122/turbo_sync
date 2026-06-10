@@ -117,7 +117,11 @@ pub async fn run_foreground() -> Result<()> {
     let pool_for_incoming = pool.clone();
     let event_tx_for_incoming = event_tx.clone();
     let incoming_file_op_handler: turbosync_transport::IncomingFileOpHandler = Arc::new(
-        move |target_root: String, relative_path: String, op_kind: String, bytes: u64| -> Result<()> {
+        move |target_root: String,
+              relative_path: String,
+              op_kind: String,
+              bytes: u64|
+              -> Result<()> {
             let tasks = tokio::task::block_in_place(|| {
                 let handle = tokio::runtime::Handle::current();
                 handle.block_on(turbosync_storage::list_sync_tasks(&pool_for_incoming))
