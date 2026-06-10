@@ -114,12 +114,48 @@ pub async fn run_foreground() -> Result<()> {
         },
     );
 
+    let pool_for_incoming = pool.clone();
+    let event_tx_for_incoming = event_tx.clone();
+    let incoming_file_op_handler: turbosync_transport::IncomingFileOpHandler = Arc::new(
+        move |target_root: String, relative_path: String, op_kind: String, bytes: u64| -> Result<()> {
+            let tasks = tokio::task::block_in_place(|| {
+                let handle = tokio::runtime::Handle::current();
+                handle.block_on(turbosync_storage::list_sync_tasks(&pool_for_incoming))
+            })?;
+
+            let task = tasks.iter().find(|t| t.source_path == target_root);
+            if let Some(task) = task {
+                tokio::task::block_in_place(|| {
+                    let handle = tokio::runtime::Handle::current();
+                    handle.block_on(turbosync_storage::add_sync_event(
+                        &pool_for_incoming,
+                        &task.id,
+                        &relative_path,
+                        &op_kind,
+                    ))
+                })?;
+
+                let _ = event_tx_for_incoming.send(SseEvent {
+                    event: "file_received".to_owned(),
+                    data: serde_json::json!({
+                        "task_id": task.id,
+                        "relative_path": relative_path,
+                        "event_kind": op_kind,
+                        "bytes": bytes,
+                    }),
+                });
+            }
+            Ok(())
+        },
+    );
+
     let transport_server =
         turbosync_transport::TransportServer::bind(&config.transport_addr, cert, key)
             .await
             .context("failed to start transport server")?
             .with_file_index_handler(file_index_handler)
-            .with_pull_file_handler(pull_file_handler);
+            .with_pull_file_handler(pull_file_handler)
+            .with_incoming_file_op_handler(incoming_file_op_handler);
     tokio::spawn(async move {
         if let Err(error) = transport_server.run().await {
             tracing::error!(%error, "transport server stopped");

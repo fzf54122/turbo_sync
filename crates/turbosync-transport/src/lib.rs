@@ -12,6 +12,9 @@ pub type FileIndexHandler = Arc<dyn Fn(String) -> Result<Vec<u8>> + Send + Sync>
 /// Handler for pull-file requests: receives (task_id, relative_path), returns file bytes.
 pub type PullFileHandler = Arc<dyn Fn(String, String) -> Result<Vec<u8>> + Send + Sync>;
 
+/// Handler for incoming file operations: receives (target_root, relative_path, op_kind, bytes).
+pub type IncomingFileOpHandler = Arc<dyn Fn(String, String, String, u64) -> Result<()> + Send + Sync>;
+
 // ── certificate helpers ───────────────────────────────────────────────
 
 fn make_server_config(
@@ -141,6 +144,7 @@ fn op_kind_from_u8(v: u8) -> Result<String> {
 struct ConnectionHandlers {
     file_index: Option<FileIndexHandler>,
     pull_file: Option<PullFileHandler>,
+    incoming_file_op: Option<IncomingFileOpHandler>,
 }
 
 pub struct TransportServer {
@@ -165,6 +169,7 @@ impl TransportServer {
             handlers: ConnectionHandlers {
                 file_index: None,
                 pull_file: None,
+                incoming_file_op: None,
             },
         })
     }
@@ -180,6 +185,13 @@ impl TransportServer {
     #[must_use]
     pub fn with_pull_file_handler(mut self, handler: PullFileHandler) -> Self {
         self.handlers.pull_file = Some(handler);
+        self
+    }
+
+    /// Register a handler for incoming `0x00` file operations.
+    #[must_use]
+    pub fn with_incoming_file_op_handler(mut self, handler: IncomingFileOpHandler) -> Self {
+        self.handlers.incoming_file_op = Some(handler);
         self
     }
 
@@ -237,7 +249,7 @@ async fn handle_stream(
     let command = read_u8(&mut recv, "command").await?;
 
     match command {
-        0x00 => handle_file_op(&mut send, &mut recv).await,
+        0x00 => handle_file_op(&mut send, &mut recv, &handlers).await,
         0x10 => {
             let task_id = read_string(&mut recv, "task_id").await?;
             match &handlers.file_index {
@@ -292,7 +304,7 @@ async fn handle_stream(
     }
 }
 
-async fn handle_file_op(send: &mut SendStream, recv: &mut RecvStream) -> Result<()> {
+async fn handle_file_op(send: &mut SendStream, recv: &mut RecvStream, handlers: &ConnectionHandlers) -> Result<()> {
     let target_root = read_string(recv, "target_root").await?;
     let target_root = PathBuf::from(target_root);
     let relative_path = read_string(recv, "relative_path").await?;
@@ -307,6 +319,17 @@ async fn handle_file_op(send: &mut SendStream, recv: &mut RecvStream) -> Result<
         Ok(bytes) => {
             send.write_all(&[0]).await?;
             tracing::info!(%relative_path, %op_kind, bytes, "remote operation ok");
+
+            if let Some(handler) = &handlers.incoming_file_op {
+                if let Err(e) = handler(
+                    target_root.to_string_lossy().to_string(),
+                    relative_path.clone(),
+                    op_kind.clone(),
+                    bytes,
+                ) {
+                    tracing::warn!(%relative_path, error = %e, "incoming file op handler failed");
+                }
+            }
         }
         Err(error) => {
             let msg = error.to_string();
