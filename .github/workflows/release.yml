@@ -360,7 +360,7 @@ jobs:
           dpkg-deb --root-owner-group -Zxz --build "${ROOT}" "dist/${PACKAGE}.deb"
 
       - name: Build RPM package
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
           set -euo pipefail
