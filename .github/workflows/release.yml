@@ -127,6 +127,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          for i in 1 2 3; do
+            docker pull debian:buster-slim && break || sleep 10
+          done
           docker run --rm \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
@@ -420,7 +423,7 @@ jobs:
           /usr/share/icons/hicolor/256x256/apps/turbosync.png
           EOF
 
-          rpmbuild -bb --target "${RPM_ARCH}" --define "_topdir ${RPM_TOPDIR}" "${RPM_TOPDIR}/SPECS/turbosync.spec"
+          rpmbuild -bb --define "_topdir ${RPM_TOPDIR}" "${RPM_TOPDIR}/SPECS/turbosync.spec"
           find "${RPM_TOPDIR}/RPMS" -type f -name '*.rpm' -exec cp {} dist/ \;
 
       - name: Archive Windows package
